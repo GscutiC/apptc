@@ -1,5 +1,5 @@
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 from ....domain.repositories.auth_repository import UserRepository, RoleRepository
@@ -28,8 +28,8 @@ class MongoUserRepository(UserRepository):
             "role_id": default_role["_id"] if default_role else None,
             "role_name": "user",
             "is_active": True,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc)
         })
         
         result = await self.users_collection.insert_one(user_dict)
@@ -65,7 +65,8 @@ class MongoUserRepository(UserRepository):
             },
             {
                 "$addFields": {
-                    "role": {"$arrayElemAt": ["$role_info", 0]}
+                    "role": {"$arrayElemAt": ["$role_info", 0]},
+                    "last_login": {"$ifNull": ["$last_login", None]}
                 }
             },
             {"$unset": ["role_info", "role_id"]}
@@ -83,7 +84,7 @@ class MongoUserRepository(UserRepository):
     async def update_user(self, clerk_id: str, user_data: UserUpdate) -> Optional[User]:
         """Actualizar usuario"""
         update_dict = {k: v for k, v in user_data.dict().items() if v is not None}
-        update_dict["updated_at"] = datetime.utcnow()
+        update_dict["updated_at"] = datetime.now(timezone.utc)
         
         # Si se actualiza el rol, obtener la referencia
         if "role_name" in update_dict:
@@ -122,7 +123,8 @@ class MongoUserRepository(UserRepository):
             },
             {
                 "$addFields": {
-                    "role": {"$arrayElemAt": ["$role_info", 0]}
+                    "role": {"$arrayElemAt": ["$role_info", 0]},
+                    "last_login": {"$ifNull": ["$last_login", None]}
                 }
             },
             {"$unset": ["role_info", "role_id"]},
@@ -143,7 +145,7 @@ class MongoUserRepository(UserRepository):
         """Actualizar última fecha de login"""
         result = await self.users_collection.update_one(
             {"clerk_id": clerk_id},
-            {"$set": {"last_login": datetime.utcnow()}}
+            {"$set": {"last_login": datetime.now(timezone.utc)}}
         )
         return result.matched_count > 0
 
@@ -195,7 +197,7 @@ class MongoRoleRepository(RoleRepository):
     async def update_role(self, role_id: str, role_data: dict) -> Optional[Role]:
         """Actualizar rol"""
         try:
-            role_data["updated_at"] = datetime.utcnow()
+            role_data["updated_at"] = datetime.now(timezone.utc)
             result = await self.collection.update_one(
                 {"_id": ObjectId(role_id)},
                 {"$set": role_data}
@@ -212,7 +214,7 @@ class MongoRoleRepository(RoleRepository):
         try:
             result = await self.collection.update_one(
                 {"_id": ObjectId(role_id)},
-                {"$set": {"is_active": False, "updated_at": datetime.utcnow()}}
+                {"$set": {"is_active": False, "updated_at": datetime.now(timezone.utc)}}
             )
             return result.matched_count > 0
         except Exception:

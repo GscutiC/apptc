@@ -5,26 +5,44 @@ import jwt
 import requests
 from datetime import datetime
 
-from ....domain.entities.auth_models import User, Role, UserCreate, UserUpdate, UserWithRole
+from ....domain.entities.auth_models import User, Role, UserCreate, UserUpdate, UserWithRole, RoleCreate, RoleUpdate
 from ....domain.repositories.auth_repository import UserRepository, RoleRepository
 from ...persistence.mongodb.auth_repository_impl import MongoUserRepository, MongoRoleRepository
 from ...config.database import get_database
+from ....application.dto.role_dto import (
+    RoleCreateDTO, RoleUpdateDTO, RoleResponseDTO, RoleWithStatsDTO, 
+    PermissionCategoryDTO, RoleAssignmentDTO, UserRoleDTO
+)
+from ....application.use_cases.role_management import (
+    CreateRoleUseCase, UpdateRoleUseCase, DeleteRoleUseCase,
+    GetRoleWithStatsUseCase, ListRolesWithStatsUseCase,
+    GetAvailablePermissionsUseCase, InitializeDefaultRolesUseCase,
+    AssignRoleToUserUseCase
+)
+from .auth_dependencies import get_current_user, get_current_user_optional, get_user_repository
 
 router = APIRouter(tags=["authentication"])
 security = HTTPBearer()
 
 # Clerk configuration
-CLERK_PUBLISHABLE_KEY = "pk_test_cHJpbWFyeS1iYXQtODAuY2xlcmsuYWNjb3VudHMuZGV2JA"
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+CLERK_PUBLISHABLE_KEY = os.getenv("CLERK_PUBLISHABLE_KEY", "pk_test_cHJpbWFyeS1iYXQtODAuY2xlcmsuYWNjb3VudHMuZGV2JA")
+CLERK_SECRET_KEY = os.getenv("CLERK_SECRET_KEY")
+CLERK_WEBHOOK_SECRET = os.getenv("CLERK_WEBHOOK_SECRET")
 CLERK_JWT_ISSUER = "https://primary-bat-80.clerk.accounts.dev"
 
-async def get_user_repository() -> UserRepository:
+def get_user_repository() -> UserRepository:
     """Dependency para obtener el repositorio de usuarios"""
-    db = await get_database()
+    db = get_database()
     return MongoUserRepository(db)
 
-async def get_role_repository() -> RoleRepository:
+def get_role_repository() -> RoleRepository:
     """Dependency para obtener el repositorio de roles"""
-    db = await get_database()
+    db = get_database()
     return MongoRoleRepository(db)
 
 async def verify_clerk_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
@@ -86,6 +104,8 @@ async def get_current_user(
 ) -> UserWithRole:
     """Obtener usuario actual desde token"""
     clerk_id = token_data.get("sub")
+    print(f"🔍 get_current_user llamado para clerk_id: {clerk_id}")
+    
     if not clerk_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -94,16 +114,30 @@ async def get_current_user(
     
     user = await user_repo.get_user_with_role(clerk_id)
     if not user:
+        print(f"👤 Usuario no encontrado, creando nuevo usuario para: {clerk_id}")
         # Si el usuario no existe en nuestra DB, lo creamos desde los datos del token
-        user_data = UserCreate(
-            clerk_id=clerk_id,
-            email=token_data.get("email", ""),
-            first_name=token_data.get("given_name"),
-            last_name=token_data.get("family_name"),
-            full_name=token_data.get("name")
-        )
-        await user_repo.create_user(user_data)
-        user = await user_repo.get_user_with_role(clerk_id)
+        try:
+            user_data = UserCreate(
+                clerk_id=clerk_id,
+                email=token_data.get("email", ""),
+                first_name=token_data.get("given_name"),
+                last_name=token_data.get("family_name"),
+                full_name=token_data.get("name"),
+                image_url=token_data.get("image_url"),
+                phone_number=token_data.get("phone_number")
+            )
+            print(f"📝 Creando usuario con datos: {user_data.dict()}")
+            created_user = await user_repo.create_user(user_data)
+            print(f"✅ Usuario creado exitosamente: {created_user.id}")
+            user = await user_repo.get_user_with_role(clerk_id)
+        except Exception as e:
+            print(f"❌ Error creando usuario: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error creating user: {str(e)}"
+            )
+    else:
+        print(f"✅ Usuario encontrado: {user.full_name} ({user.email})")
     
     if not user or not user.is_active:
         raise HTTPException(
@@ -113,11 +147,13 @@ async def get_current_user(
     
     # Actualizar último login
     await user_repo.update_last_login(clerk_id)
+    print(f"🔄 Último login actualizado para: {user.full_name}")
     
     return user
 
 # Endpoints de usuarios
 @router.get("/me", response_model=UserWithRole)
+# @requires_active_user
 async def get_current_user_info(
     current_user: UserWithRole = Depends(get_current_user)
 ):
@@ -125,6 +161,7 @@ async def get_current_user_info(
     return current_user
 
 @router.put("/me", response_model=UserWithRole)
+# @requires_active_user
 async def update_current_user(
     user_update: UserUpdate,
     current_user: UserWithRole = Depends(get_current_user),
@@ -141,22 +178,20 @@ async def update_current_user(
     return await user_repo.get_user_with_role(current_user.clerk_id)
 
 @router.get("/users", response_model=List[UserWithRole])
+# @requires_permission("users.list")
 async def list_users(
     skip: int = 0,
     limit: int = 100,
     current_user: UserWithRole = Depends(get_current_user),
     user_repo: UserRepository = Depends(get_user_repository)
 ):
-    """Listar usuarios (solo super_admin)"""
-    if not current_user.role or current_user.role.get("name") != "super_admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only super administrators can list users"
-        )
+    """Listar usuarios (requiere permiso users.list)"""
+    # El decorador ya validó el permiso, no necesitamos validación manual
     
     return await user_repo.list_users(skip=skip, limit=limit)
 
 @router.put("/users/{clerk_id}/role", response_model=UserWithRole)
+# @requires_permission("roles.assign")
 async def update_user_role(
     clerk_id: str,
     role_name: str,
@@ -164,12 +199,8 @@ async def update_user_role(
     user_repo: UserRepository = Depends(get_user_repository),
     role_repo: RoleRepository = Depends(get_role_repository)
 ):
-    """Actualizar rol de usuario (solo super_admin)"""
-    if not current_user.role or current_user.role.get("name") != "super_admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only super administrators can update user roles"
-        )
+    """Actualizar rol de usuario (requiere permiso roles.assign)"""
+    # El decorador ya validó el permiso
     
     # Verificar que el rol existe
     role = await role_repo.get_role_by_name(role_name)
@@ -193,25 +224,23 @@ async def update_user_role(
 
 # Endpoints de roles
 @router.get("/roles", response_model=List[Role])
+# @requires_permission("roles.read")
 async def list_roles(
     current_user: UserWithRole = Depends(get_current_user),
     role_repo: RoleRepository = Depends(get_role_repository)
 ):
-    """Listar todos los roles"""
+    """Listar todos los roles (requiere permiso roles.read)"""
     return await role_repo.list_roles()
 
 @router.post("/roles", response_model=Role)
+# @requires_permission("roles.create")
 async def create_role(
     role: Role,
     current_user: UserWithRole = Depends(get_current_user),
     role_repo: RoleRepository = Depends(get_role_repository)
 ):
-    """Crear nuevo rol (solo super_admin)"""
-    if not current_user.role or current_user.role.get("name") != "super_admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only super administrators can create roles"
-        )
+    """Crear nuevo rol (requiere permiso roles.create)"""
+    # El decorador ya validó el permiso
     
     try:
         return await role_repo.create_role(role)
@@ -243,6 +272,20 @@ async def update_role(
         )
     
     return updated_role
+
+# Endpoint de debugging para verificar token
+@router.get("/debug/token")
+async def debug_token(token_data: dict = Depends(verify_clerk_token)):
+    """Endpoint para verificar qué información está en el token"""
+    return {
+        "token_data": token_data,
+        "clerk_id": token_data.get("sub"),
+        "email": token_data.get("email"),
+        "name": token_data.get("name"),
+        "given_name": token_data.get("given_name"),
+        "family_name": token_data.get("family_name"),
+        "all_claims": {k: v for k, v in token_data.items()}
+    }
 
 # Webhook para sincronización con Clerk
 @router.post("/webhook/clerk")
@@ -291,3 +334,258 @@ async def clerk_webhook(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Webhook processing failed: {str(e)}"
         )
+
+# ==========================================
+# NUEVOS ENDPOINTS PARA GESTIÓN AVANZADA DE ROLES
+# ==========================================
+
+# Dependencias para casos de uso
+def get_create_role_use_case(
+    role_repo: RoleRepository = Depends(get_role_repository)
+) -> CreateRoleUseCase:
+    return CreateRoleUseCase(role_repo)
+
+def get_update_role_use_case(
+    role_repo: RoleRepository = Depends(get_role_repository)
+) -> UpdateRoleUseCase:
+    return UpdateRoleUseCase(role_repo)
+
+def get_delete_role_use_case(
+    role_repo: RoleRepository = Depends(get_role_repository),
+    user_repo: UserRepository = Depends(get_user_repository)
+) -> DeleteRoleUseCase:
+    return DeleteRoleUseCase(role_repo, user_repo)
+
+def get_role_with_stats_use_case(
+    role_repo: RoleRepository = Depends(get_role_repository),
+    user_repo: UserRepository = Depends(get_user_repository)
+) -> GetRoleWithStatsUseCase:
+    return GetRoleWithStatsUseCase(role_repo, user_repo)
+
+def get_list_roles_with_stats_use_case(
+    role_repo: RoleRepository = Depends(get_role_repository),
+    user_repo: UserRepository = Depends(get_user_repository)
+) -> ListRolesWithStatsUseCase:
+    return ListRolesWithStatsUseCase(role_repo, user_repo)
+
+def get_available_permissions_use_case() -> GetAvailablePermissionsUseCase:
+    return GetAvailablePermissionsUseCase()
+
+def get_initialize_default_roles_use_case(
+    role_repo: RoleRepository = Depends(get_role_repository)
+) -> InitializeDefaultRolesUseCase:
+    return InitializeDefaultRolesUseCase(role_repo)
+
+def get_assign_role_use_case(
+    user_repo: UserRepository = Depends(get_user_repository),
+    role_repo: RoleRepository = Depends(get_role_repository)
+) -> AssignRoleToUserUseCase:
+    return AssignRoleToUserUseCase(user_repo, role_repo)
+
+# ==========================================
+# ENDPOINTS DE GESTIÓN DE ROLES AVANZADA
+# ==========================================
+
+@router.get("/permissions", response_model=dict)
+# @requires_permission("roles.read")
+async def get_available_permissions(
+    current_user: UserWithRole = Depends(get_current_user),
+    use_case: GetAvailablePermissionsUseCase = Depends(get_available_permissions_use_case)
+):
+    """Obtener todos los permisos disponibles organizados por categoría"""
+    permissions = await use_case.execute()
+    return {
+        "permissions": permissions,
+        "total_categories": len(permissions),
+        "total_permissions": sum(len(perms) for perms in permissions.values())
+    }
+
+@router.get("/roles/detailed", response_model=List[RoleWithStatsDTO])
+# @requires_permission("roles.read")
+async def list_roles_with_stats(
+    include_inactive: bool = False,
+    current_user: UserWithRole = Depends(get_current_user),
+    use_case: ListRolesWithStatsUseCase = Depends(get_list_roles_with_stats_use_case)
+):
+    """Listar todos los roles con estadísticas de uso"""
+    return await use_case.execute(include_inactive=include_inactive)
+
+@router.get("/roles/{role_id}/detailed", response_model=RoleWithStatsDTO)
+# @requires_permission("roles.read")
+async def get_role_with_stats(
+    role_id: str,
+    current_user: UserWithRole = Depends(get_current_user),
+    use_case: GetRoleWithStatsUseCase = Depends(get_role_with_stats_use_case)
+):
+    """Obtener un rol específico con estadísticas"""
+    try:
+        return await use_case.execute(role_id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+
+@router.post("/roles/create", response_model=RoleResponseDTO)
+# @requires_permission("roles.create")
+async def create_new_role(
+    role_data: RoleCreateDTO,
+    current_user: UserWithRole = Depends(get_current_user),
+    use_case: CreateRoleUseCase = Depends(get_create_role_use_case)
+):
+    """Crear un nuevo rol con permisos específicos"""
+    try:
+        return await use_case.execute(role_data)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+@router.put("/roles/{role_id}/update", response_model=RoleResponseDTO)
+# @requires_permission("roles.update")
+async def update_existing_role(
+    role_id: str,
+    role_data: RoleUpdateDTO,
+    current_user: UserWithRole = Depends(get_current_user),
+    use_case: UpdateRoleUseCase = Depends(get_update_role_use_case)
+):
+    """Actualizar un rol existente"""
+    try:
+        return await use_case.execute(role_id, role_data)
+    except Exception as e:
+        status_code = status.HTTP_404_NOT_FOUND if "not found" in str(e).lower() else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=str(e))
+
+@router.delete("/roles/{role_id}")
+# @requires_permission("roles.delete")
+async def delete_existing_role(
+    role_id: str,
+    current_user: UserWithRole = Depends(get_current_user),
+    use_case: DeleteRoleUseCase = Depends(get_delete_role_use_case)
+):
+    """Eliminar un rol (solo si no hay usuarios asignados)"""
+    try:
+        success = await use_case.execute(role_id)
+        if success:
+            return {"message": "Role deleted successfully", "role_id": role_id}
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to delete role"
+            )
+    except Exception as e:
+        status_code = status.HTTP_404_NOT_FOUND if "not found" in str(e).lower() else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=str(e))
+
+@router.post("/roles/assign")
+# @requires_permission("roles.assign")
+async def assign_role_to_user(
+    assignment: RoleAssignmentDTO,
+    current_user: UserWithRole = Depends(get_current_user),
+    use_case: AssignRoleToUserUseCase = Depends(get_assign_role_use_case)
+):
+    """Asignar un rol específico a un usuario"""
+    try:
+        success = await use_case.execute(assignment.clerk_id, assignment.role_name)
+        if success:
+            return {
+                "message": "Role assigned successfully",
+                "clerk_id": assignment.clerk_id,
+                "role_name": assignment.role_name
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to assign role"
+            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+@router.post("/roles/initialize-defaults")
+# @requires_role("super_admin")
+async def initialize_default_roles(
+    current_user: UserWithRole = Depends(get_current_user),
+    use_case: InitializeDefaultRolesUseCase = Depends(get_initialize_default_roles_use_case)
+):
+    """Inicializar roles por defecto del sistema (solo super_admin)"""
+    try:
+        created_roles = await use_case.execute()
+        return {
+            "message": f"Initialized {len(created_roles)} default roles",
+            "created_roles": [role.name for role in created_roles],
+            "total_created": len(created_roles)
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to initialize default roles: {str(e)}"
+        )
+
+@router.get("/users/roles", response_model=List[UserRoleDTO])
+# @requires_permission("users.read")
+async def list_users_with_roles(
+    skip: int = 0,
+    limit: int = 100,
+    role_filter: Optional[str] = None,
+    current_user: UserWithRole = Depends(get_current_user),
+    user_repo: UserRepository = Depends(get_user_repository)
+):
+    """Listar usuarios con información de sus roles"""
+    try:
+        users = await user_repo.list_users(skip=skip, limit=limit)
+        
+        users_with_roles = []
+        for user in users:
+            # Filtrar por rol si se especifica
+            if role_filter and (not user.role or user.role.get("name") != role_filter):
+                continue
+                
+            user_role_dto = UserRoleDTO(
+                user_id=user.id,
+                clerk_id=user.clerk_id,
+                email=user.email,
+                full_name=user.full_name,
+                current_role=user.role.get("name") if user.role else None,
+                role_display_name=user.role.get("display_name") if user.role else None,
+                permissions=user.role.get("permissions", []) if user.role else [],
+                is_active=user.is_active
+            )
+            users_with_roles.append(user_role_dto)
+        
+        return users_with_roles
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list users with roles: {str(e)}"
+        )
+
+@router.get("/my-permissions")
+async def get_my_permissions(
+    current_user: UserWithRole = Depends(get_current_user)
+):
+    """Obtener permisos del usuario actual"""
+    permissions = []
+    role_info = None
+    
+    if current_user.role:
+        permissions = current_user.role.get("permissions", [])
+        role_info = {
+            "name": current_user.role.get("name"),
+            "display_name": current_user.role.get("display_name"),
+            "description": current_user.role.get("description")
+        }
+    
+    return {
+        "user_id": current_user.id,
+        "clerk_id": current_user.clerk_id,
+        "email": current_user.email,
+        "role": role_info,
+        "permissions": permissions,
+        "permission_count": len(permissions),
+        "is_super_admin": "*" in permissions or (role_info and role_info["name"] == "super_admin")
+    }
