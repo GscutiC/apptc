@@ -11,6 +11,7 @@ from ....infrastructure.persistence.mongodb.message_repository_impl import Mongo
 from ....infrastructure.services.simple_ai_service import SimpleAIService
 from ....infrastructure.config.database import DatabaseConfig
 from .auth_routes import router as auth_router
+from .interface_config_routes import router as interface_config_router
 from ....domain.entities.auth_models import User
 from ....domain.value_objects.auth_decorators import (
     requires_permission, requires_role, requires_active_user,
@@ -36,6 +37,9 @@ app.add_middleware(
 
 # Incluir rutas de autenticación
 app.include_router(auth_router, prefix="/auth", tags=["authentication"])
+
+# Incluir rutas de configuración de interfaz
+app.include_router(interface_config_router)
 
 # Configuración de dependencias
 from ....infrastructure.config.database import get_database
