@@ -30,9 +30,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-CLERK_PUBLISHABLE_KEY = os.getenv("CLERK_PUBLISHABLE_KEY", "pk_test_cHJpbWFyeS1iYXQtODAuY2xlcmsuYWNjb3VudHMuZGV2JA")
+CLERK_PUBLISHABLE_KEY = os.getenv("CLERK_PUBLISHABLE_KEY")
+if not CLERK_PUBLISHABLE_KEY:
+    raise ValueError("CLERK_PUBLISHABLE_KEY environment variable is required")
 CLERK_SECRET_KEY = os.getenv("CLERK_SECRET_KEY")
+if not CLERK_SECRET_KEY:
+    raise ValueError("CLERK_SECRET_KEY environment variable is required")
 CLERK_WEBHOOK_SECRET = os.getenv("CLERK_WEBHOOK_SECRET")
+if not CLERK_WEBHOOK_SECRET:
+    raise ValueError("CLERK_WEBHOOK_SECRET environment variable is required")
 CLERK_JWT_ISSUER = "https://primary-bat-80.clerk.accounts.dev"
 
 def get_user_repository() -> UserRepository:
@@ -104,17 +110,15 @@ async def get_current_user(
 ) -> UserWithRole:
     """Obtener usuario actual desde token"""
     clerk_id = token_data.get("sub")
-    print(f"🔍 get_current_user llamado para clerk_id: {clerk_id}")
-    
+
     if not clerk_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token subject"
         )
-    
+
     user = await user_repo.get_user_with_role(clerk_id)
     if not user:
-        print(f"👤 Usuario no encontrado, creando nuevo usuario para: {clerk_id}")
         # Si el usuario no existe en nuestra DB, lo creamos desde los datos del token
         try:
             user_data = UserCreate(
@@ -126,29 +130,23 @@ async def get_current_user(
                 image_url=token_data.get("image_url"),
                 phone_number=token_data.get("phone_number")
             )
-            print(f"📝 Creando usuario con datos: {user_data.dict()}")
             created_user = await user_repo.create_user(user_data)
-            print(f"✅ Usuario creado exitosamente: {created_user.id}")
             user = await user_repo.get_user_with_role(clerk_id)
         except Exception as e:
-            print(f"❌ Error creando usuario: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error creating user: {str(e)}"
+                detail="Error creating user"
             )
-    else:
-        print(f"✅ Usuario encontrado: {user.full_name} ({user.email})")
-    
+
     if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not active"
         )
-    
+
     # Actualizar último login
     await user_repo.update_last_login(clerk_id)
-    print(f"🔄 Último login actualizado para: {user.full_name}")
-    
+
     return user
 
 # Endpoints de usuarios
@@ -213,7 +211,7 @@ async def update_user_role(
     # Actualizar usuario
     user_update = UserUpdate(role_name=role_name)
     updated_user = await user_repo.update_user(clerk_id, user_update)
-    
+
     if not updated_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -224,12 +222,19 @@ async def update_user_role(
 
 # Endpoints de roles
 @router.get("/roles", response_model=List[Role])
-# @requires_permission("roles.read")
 async def list_roles(
     current_user: UserWithRole = Depends(get_current_user),
     role_repo: RoleRepository = Depends(get_role_repository)
 ):
-    """Listar todos los roles (requiere permiso roles.read)"""
+    """Listar todos los roles (requiere usuario autenticado)"""
+    # Verificamos si el usuario tiene permisos para leer roles
+    user_permissions = current_user.role.get("permissions", []) if current_user.role else []
+    if "roles.read" not in user_permissions and "roles.list" not in user_permissions:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions to access roles"
+        )
+    
     return await role_repo.list_roles()
 
 @router.post("/roles", response_model=Role)
@@ -408,7 +413,8 @@ async def list_roles_with_stats(
     use_case: ListRolesWithStatsUseCase = Depends(get_list_roles_with_stats_use_case)
 ):
     """Listar todos los roles con estadísticas de uso"""
-    return await use_case.execute(include_inactive=include_inactive)
+    result = await use_case.execute(include_inactive=include_inactive)
+    return result
 
 @router.get("/roles/{role_id}/detailed", response_model=RoleWithStatsDTO)
 # @requires_permission("roles.read")

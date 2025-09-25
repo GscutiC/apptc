@@ -15,25 +15,31 @@ class MongoUserRepository(UserRepository):
     
     async def create_user(self, user_data: UserCreate) -> User:
         """Crear un nuevo usuario"""
+        print(f"📝 create_user: Creando usuario con datos: {user_data.dict()}")
+        
         # Verificar si ya existe
         existing = await self.get_user_by_clerk_id(user_data.clerk_id)
         if existing:
+            print(f"⚠️ Usuario ya existe: {existing.clerk_id}")
             raise ValueError(f"Usuario con clerk_id {user_data.clerk_id} ya existe")
         
         # Obtener rol por defecto
         default_role = await self.roles_collection.find_one({"name": "user"})
+        print(f"🔍 Rol por defecto encontrado: {default_role}")
         
         user_dict = user_data.dict()
         user_dict.update({
             "role_id": default_role["_id"] if default_role else None,
-            "role_name": "user",
+            "role_name": "user",  # Siempre en minúsculas
             "is_active": True,
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc)
         })
         
+        print(f"📋 Datos finales a insertar: {user_dict}")
         result = await self.users_collection.insert_one(user_dict)
         user_dict["_id"] = result.inserted_id
+        print(f"✅ Usuario insertado con ID: {result.inserted_id}")
         
         return User(**user_dict)
     
@@ -53,6 +59,8 @@ class MongoUserRepository(UserRepository):
     
     async def get_user_with_role(self, clerk_id: str) -> Optional[UserWithRole]:
         """Obtener usuario con información completa del rol"""
+        print(f"🔍 get_user_with_role: Buscando usuario con clerk_id: {clerk_id}")
+        
         pipeline = [
             {"$match": {"clerk_id": clerk_id}},
             {
@@ -72,25 +80,42 @@ class MongoUserRepository(UserRepository):
             {"$unset": ["role_info", "role_id"]}
         ]
         
+        print(f"📝 Pipeline: {pipeline}")
         result = await self.users_collection.aggregate(pipeline).to_list(1)
+        print(f"📊 Resultado agregación: {result}")
+        
         if result:
             user_data = result[0]
+            # print(f"📋 Datos usuario antes de procesar: {user_data}")
             user_data["id"] = str(user_data.pop("_id"))
             if user_data.get("role") and user_data["role"].get("_id"):
                 user_data["role"]["id"] = str(user_data["role"].pop("_id"))
-            return UserWithRole(**user_data)
-        return None
+            # print(f"📋 Datos usuario después de procesar: {user_data}")
+            try:
+                user_with_role = UserWithRole(**user_data)
+                print(f"✅ UserWithRole creado exitosamente: {user_with_role.email}")
+                return user_with_role
+            except Exception as e:
+                print(f"❌ Error creando UserWithRole: {e}")
+                print(f"📋 Datos que causaron el error: {user_data}")
+                return None
+        else:
+            print(f"❌ No se encontró usuario con clerk_id: {clerk_id}")
+            return None
     
     async def update_user(self, clerk_id: str, user_data: UserUpdate) -> Optional[User]:
         """Actualizar usuario"""
         update_dict = {k: v for k, v in user_data.dict().items() if v is not None}
         update_dict["updated_at"] = datetime.now(timezone.utc)
         
-        # Si se actualiza el rol, obtener la referencia
+        # Si se actualiza el rol, obtener la referencia (case-insensitive)
         if "role_name" in update_dict:
-            role = await self.roles_collection.find_one({"name": update_dict["role_name"]})
+            # Normalizar a minúsculas para búsqueda case-insensitive
+            role_name_normalized = update_dict["role_name"].lower().strip()
+            role = await self.roles_collection.find_one({"name": role_name_normalized})
             if role:
                 update_dict["role_id"] = role["_id"]
+                update_dict["role_name"] = role_name_normalized  # Guardar normalizado
             else:
                 raise ValueError(f"Rol {update_dict['role_name']} no encontrado")
         

@@ -130,21 +130,19 @@ async def debug_create_user(user_data: dict):
                 "success": True,
                 "message": "Usuario ya existe",
                 "user": {
-                    "id": existing_user.id,
+                    "id": str(existing_user.id),
                     "email": existing_user.email,
                     "full_name": existing_user.full_name,
                     "role": existing_user.role_name
                 }
-            }
-        
-        # Crear nuevo usuario
+            }        # Crear nuevo usuario
         created_user = await user_repo.create_user(new_user)
         
         return {
             "success": True,
             "message": "Usuario creado exitosamente",
             "user": {
-                "id": created_user.id,
+                "id": str(created_user.id),
                 "email": created_user.email,
                 "full_name": created_user.full_name,
                 "role": created_user.role_name
@@ -153,6 +151,56 @@ async def debug_create_user(user_data: dict):
         
     except Exception as e:
         print(f"❌ Error en debug_create_user: {e}")
+        return {
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }
+
+@app.post("/debug/sync-user-role/{clerk_id}")
+async def debug_sync_user_role(clerk_id: str):
+    """Endpoint de debug para sincronizar role_id con role_name"""
+    try:
+        from ....infrastructure.config.database import get_database
+        from ....infrastructure.persistence.mongodb.auth_repository_impl import MongoUserRepository
+        from ....domain.entities.auth_models import UserUpdate
+        
+        db = get_database()
+        user_repo = MongoUserRepository(db)
+        
+        # Obtener usuario actual
+        user = await user_repo.get_user_by_clerk_id(clerk_id)
+        if not user:
+            return {
+                "success": False,
+                "message": "Usuario no encontrado"
+            }
+        
+        print(f"🔄 Sincronizando rol para usuario: {user.email}")
+        print(f"📋 Role actual: role_name='{user.role_name}', role_id='{user.role_id}'")
+        
+        # Actualizar usando el método que ya sincroniza role_id y role_name
+        user_update = UserUpdate(role_name=user.role_name)
+        updated_user = await user_repo.update_user(clerk_id, user_update)
+        
+        if updated_user:
+            return {
+                "success": True,
+                "message": "Usuario sincronizado exitosamente",
+                "user": {
+                    "id": str(updated_user.id),
+                    "email": updated_user.email,
+                    "role_name": updated_user.role_name,
+                    "role_id": str(updated_user.role_id) if updated_user.role_id else None
+                }
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Error actualizando usuario"
+            }
+            
+    except Exception as e:
+        print(f"❌ Error en debug_sync_user_role: {e}")
         return {
             "success": False,
             "message": f"Error: {str(e)}"

@@ -178,6 +178,7 @@ class ListRolesWithStatsUseCase:
         
         # Obtener roles
         roles = await self.role_repository.list_roles()
+        
         if not include_inactive:
             roles = [r for r in roles if r.is_active]
         
@@ -189,7 +190,7 @@ class ListRolesWithStatsUseCase:
         for role in roles:
             user_count = len([u for u in users if u.role and u.role.get("id") == str(role.id)])
             
-            roles_with_stats.append(RoleWithStatsDTO(
+            role_dto = RoleWithStatsDTO(
                 id=str(role.id),
                 name=role.name,
                 display_name=role.display_name,
@@ -201,7 +202,8 @@ class ListRolesWithStatsUseCase:
                 updated_at=role.updated_at,
                 user_count=user_count,
                 permission_count=len(role.permissions)
-            ))
+            )
+            roles_with_stats.append(role_dto)
         
         return roles_with_stats
 

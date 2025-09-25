@@ -32,13 +32,14 @@ def verify_permission(permission: str):
 
 
 def verify_role(role_name: str):
-    """Factory que crea una dependencia para verificar roles específicos"""
+    """Factory que crea una dependencia para verificar roles específicos (case-insensitive)"""
     from ...infrastructure.web.fastapi.auth_dependencies import get_current_user
     
     def check_role(current_user: User = Depends(get_current_user)):
         user_role = current_user.role.get("name") if current_user.role else None
         
-        if user_role != role_name:
+        # Comparación case-insensitive
+        if not user_role or user_role.lower() != role_name.lower():
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Acceso denegado. Rol requerido: {role_name}"
