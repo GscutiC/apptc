@@ -157,3 +157,147 @@ async def update_partial_config(updates: Dict[str, Any]):
 async def reset_to_default():
     """Resetear configuración a valores por defecto"""
     return save_config(DEFAULT_CONFIG.copy())
+
+
+# === ENDPOINTS PARA PRESETS ===
+
+# Presets predefinidos del sistema
+SYSTEM_PRESETS = [
+    {
+        "id": "default-elegant-blue",
+        "name": "Elegante Azul (Por defecto)",
+        "description": "Tema elegante con gradientes azul-morado, perfecto para aplicaciones profesionales",
+        "config": DEFAULT_CONFIG.copy(),
+        "isDefault": True,
+        "isSystem": True,
+        "createdAt": "2025-09-25T20:30:00.000Z",
+        "updatedAt": "2025-09-25T20:30:00.000Z"
+    },
+    {
+        "id": "dark-elegant", 
+        "name": "Oscuro Elegante",
+        "description": "Versión oscura del tema elegante, ideal para uso prolongado",
+        "config": {
+            **DEFAULT_CONFIG,
+            "theme": {
+                **DEFAULT_CONFIG["theme"],
+                "mode": "dark",
+                "name": "Tema Oscuro Elegante",
+                "colors": {
+                    **DEFAULT_CONFIG["theme"]["colors"],
+                    "neutral": {
+                        "50": "#111827", "100": "#1f2937", "200": "#374151", "300": "#4b5563",
+                        "400": "#6b7280", "500": "#9ca3af", "600": "#d1d5db", "700": "#e5e7eb", 
+                        "800": "#f3f4f6", "900": "#f9fafb"
+                    }
+                }
+            }
+        },
+        "isDefault": False,
+        "isSystem": True,
+        "createdAt": "2025-09-25T20:30:00.000Z",
+        "updatedAt": "2025-09-25T20:30:00.000Z"
+    },
+    {
+        "id": "green-corporate",
+        "name": "Verde Corporativo", 
+        "description": "Tema verde profesional para empresas enfocadas en sostenibilidad",
+        "config": {
+            **DEFAULT_CONFIG,
+            "theme": {
+                **DEFAULT_CONFIG["theme"],
+                "name": "Tema Verde Corporativo",
+                "colors": {
+                    **DEFAULT_CONFIG["theme"]["colors"],
+                    "primary": {
+                        "50": "#ecfdf5", "100": "#d1fae5", "200": "#a7f3d0", "300": "#6ee7b7",
+                        "400": "#34d399", "500": "#10b981", "600": "#059669", "700": "#047857",
+                        "800": "#065f46", "900": "#064e3b"
+                    }
+                }
+            },
+            "branding": {
+                **DEFAULT_CONFIG["branding"],
+                "tagline": "Soluciones empresariales sostenibles"
+            }
+        },
+        "isDefault": False,
+        "isSystem": True,
+        "createdAt": "2025-09-25T20:30:00.000Z", 
+        "updatedAt": "2025-09-25T20:30:00.000Z"
+    }
+]
+
+@router.get("/presets")
+async def get_presets():
+    """Obtener todos los presets disponibles"""
+    try:
+        # Por ahora solo devolvemos presets del sistema
+        # En el futuro se pueden cargar presets personalizados desde base de datos
+        return SYSTEM_PRESETS
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/presets/{preset_id}")
+async def get_preset_by_id(preset_id: str):
+    """Obtener preset específico por ID"""
+    try:
+        preset = next((p for p in SYSTEM_PRESETS if p["id"] == preset_id), None)
+        if not preset:
+            raise HTTPException(status_code=404, detail="Preset no encontrado")
+        return preset
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/presets/{preset_id}/apply")
+async def apply_preset(preset_id: str):
+    """Aplicar un preset específico"""
+    try:
+        # Buscar el preset
+        preset = next((p for p in SYSTEM_PRESETS if p["id"] == preset_id), None)
+        if not preset:
+            raise HTTPException(status_code=404, detail="Preset no encontrado")
+        
+        # Aplicar la configuración del preset
+        config_to_apply = preset["config"].copy()
+        config_to_apply["updatedAt"] = "2025-09-25T20:30:00.000Z"  # En producción usar datetime.now()
+        
+        saved_config = save_config(config_to_apply)
+        return {
+            "message": f"Preset '{preset['name']}' aplicado correctamente",
+            "preset_id": preset_id,
+            "config": saved_config
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error aplicando preset: {str(e)}")
+
+@router.post("/presets")
+async def create_custom_preset(preset_data: Dict[str, Any]):
+    """Crear preset personalizado"""
+    # Por ahora solo mensaje de que no está implementado
+    # En el futuro se implementará guardado en base de datos
+    raise HTTPException(
+        status_code=501, 
+        detail="Creación de presets personalizados no implementada aún"
+    )
+
+@router.delete("/presets/{preset_id}")  
+async def delete_preset(preset_id: str):
+    """Eliminar preset personalizado"""
+    # Verificar que no sea preset del sistema
+    preset = next((p for p in SYSTEM_PRESETS if p["id"] == preset_id), None)
+    if preset and preset["isSystem"]:
+        raise HTTPException(
+            status_code=400, 
+            detail="No se pueden eliminar presets del sistema"
+        )
+    
+    # Por ahora solo mensaje de que no está implementado
+    raise HTTPException(
+        status_code=501,
+        detail="Eliminación de presets personalizados no implementada aún"  
+    )

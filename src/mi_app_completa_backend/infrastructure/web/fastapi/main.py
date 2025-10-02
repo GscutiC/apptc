@@ -41,6 +41,10 @@ app.include_router(auth_router, prefix="/auth", tags=["authentication"])
 # Incluir rutas de configuración de interfaz
 app.include_router(interface_config_router)
 
+# Incluir rutas de archivos
+from .file_routes import router as file_router
+app.include_router(file_router)
+
 # Configuración de dependencias
 from ....infrastructure.config.database import get_database
 
