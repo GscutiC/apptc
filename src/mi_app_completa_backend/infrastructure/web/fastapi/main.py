@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from typing import List
@@ -24,15 +24,31 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configurar CORS de manera más segura
+# Configurar CORS de manera segura y adaptativa
+debug_mode = os.getenv("DEBUG", "False").lower() == "true"
 cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+
+# En modo debug, permitir más orígenes para desarrollo
+if debug_mode:
+    cors_origins.extend(["http://localhost:5173", "http://127.0.0.1:5173"])  # Vite dev server
+
+# Limpiar orígenes y remover espacios
+cors_origins = [origin.strip() for origin in cors_origins if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=[
+        "Authorization", 
+        "Content-Type", 
+        "Accept", 
+        "X-Requested-With",
+        "Access-Control-Allow-Headers",
+        "Access-Control-Allow-Origin",
+        "Access-Control-Allow-Methods"
+    ] if not debug_mode else ["*"],  # Más restrictivo en producción
 )
 
 # Incluir rutas de autenticación
@@ -246,6 +262,59 @@ async def debug_get_user_by_clerk_id(clerk_id: str):
         
     except Exception as e:
         print(f"❌ Error en debug_get_user_by_clerk_id: {e}")
+        return {
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }
+
+@app.post("/debug/verify-token")
+async def debug_verify_token(request: Request):
+    """Endpoint de debug para verificar tokens JWT de Clerk"""
+    try:
+        from fastapi.security import HTTPBearer
+        from fastapi import HTTPException, status
+        import jwt
+        
+        # Obtener token del header
+        auth_header = request.headers.get("authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return {
+                "success": False,
+                "message": "No authorization header found",
+                "token_present": False
+            }
+        
+        token = auth_header.split(" ")[1]
+        
+        # Obtener header del token sin verificar
+        try:
+            header = jwt.get_unverified_header(token)
+            payload = jwt.decode(token, options={"verify_signature": False})
+            
+            return {
+                "success": True,
+                "message": "Token info extracted (not verified)",
+                "token_present": True,
+                "header": header,
+                "payload": {
+                    "sub": payload.get("sub"),
+                    "iss": payload.get("iss"),
+                    "aud": payload.get("aud"),
+                    "exp": payload.get("exp"),
+                    "iat": payload.get("iat"),
+                    "email": payload.get("email")
+                }
+            }
+        except Exception as decode_error:
+            return {
+                "success": False,
+                "message": f"Token decode error: {str(decode_error)}",
+                "token_present": True,
+                "token_preview": token[:50] + "..." if len(token) > 50 else token
+            }
+            
+    except Exception as e:
+        print(f"❌ Error en debug_verify_token: {e}")
         return {
             "success": False,
             "message": f"Error: {str(e)}"

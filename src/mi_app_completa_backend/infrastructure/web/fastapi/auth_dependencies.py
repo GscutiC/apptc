@@ -5,6 +5,7 @@ Este módulo evita importaciones circulares separando las dependencias
 from fastapi import HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
+from jwt import PyJWKClient
 import requests
 from typing import Optional
 
@@ -16,8 +17,8 @@ from ...config.database import get_database
 security = HTTPBearer()
 
 # Configuración JWT (debe coincidir con Clerk)
-CLERK_ISSUER = "https://clerk.com"
-CLERK_AUDIENCE = "your-app-id"  # Reemplazar con tu app ID de Clerk
+CLERK_ISSUER = "https://primary-bat-80.clerk.accounts.dev"
+CLERK_AUDIENCE = "primary-bat-80"  # App ID de Clerk
 
 
 def get_user_repository() -> MongoUserRepository:
@@ -45,59 +46,77 @@ def get_current_user_optional(
 
 
 async def verify_clerk_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
-    """Verificar token JWT de Clerk"""
+    """Verificar token JWT de Clerk usando PyJWKClient"""
     import os
     from dotenv import load_dotenv
+    
     load_dotenv()
     
     CLERK_JWT_ISSUER = "https://primary-bat-80.clerk.accounts.dev"
+    CLERK_PUBLISHABLE_KEY = os.getenv("CLERK_PUBLISHABLE_KEY")
+    debug_mode = os.getenv("DEBUG", "False").lower() == "true"
+    
+    if not CLERK_PUBLISHABLE_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Clerk configuration missing"
+        )
     
     try:
-        # Obtener las claves públicas de Clerk
+        if debug_mode:
+            print(f"🔍 Debug: Verificando token con issuer: {CLERK_JWT_ISSUER}")
+        
+        # Usar PyJWKClient para obtener las claves automáticamente
         jwks_url = f"{CLERK_JWT_ISSUER}/.well-known/jwks.json"
-        jwks_response = requests.get(jwks_url)
-        jwks = jwks_response.json()
+        if debug_mode:
+            print(f"🔍 Debug: JWKS URL: {jwks_url}")
         
-        # Decodificar el token
-        header = jwt.get_unverified_header(credentials.credentials)
-        key = None
+        jwks_client = PyJWKClient(jwks_url)
         
-        for jwk in jwks["keys"]:
-            if jwk["kid"] == header["kid"]:
-                key = jwt.algorithms.RSAAlgorithm.from_jwk(jwk)
-                break
+        # Obtener la clave de firma del token
+        signing_key = jwks_client.get_signing_key_from_jwt(credentials.credentials)
+        if debug_mode:
+            print(f"🔍 Debug: Signing key obtenida exitosamente")
         
-        if not key:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token key not found"
-            )
+        # Configuración JWT adaptativa según entorno
+        jwt_options = {
+            "verify_signature": True,  # Siempre verificar firma
+            "verify_exp": True,        # Siempre verificar expiración
+            "verify_iss": True,        # Siempre verificar emisor
+            "verify_iat": not debug_mode,  # Más tolerante en desarrollo
+            "verify_nbf": not debug_mode,  # Más tolerante en desarrollo
+        }
         
+        # Decodificar y verificar el token
         payload = jwt.decode(
             credentials.credentials,
-            key,
+            signing_key.key,
             algorithms=["RS256"],
             issuer=CLERK_JWT_ISSUER,
-            options={
-                "verify_signature": True,
-                "verify_exp": True,
-                "verify_iss": True
-            }
+            options=jwt_options
         )
         
+        if debug_mode:
+            print(f"🔍 Debug: Token decoded successfully. User: {payload.get('sub')}")
         return payload
         
-    except jwt.ExpiredSignatureError:
+    except jwt.ExpiredSignatureError as e:
+        if debug_mode:
+            print(f"🚨 Debug: Token expired: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired"
         )
-    except jwt.InvalidTokenError:
+    except jwt.InvalidTokenError as e:
+        if debug_mode:
+            print(f"🚨 Debug: Invalid token: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token"
         )
     except Exception as e:
+        if debug_mode:
+            print(f"🚨 Debug: Token verification failed: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Token verification failed: {str(e)}"
