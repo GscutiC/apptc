@@ -160,3 +160,136 @@ class ConfigHistoryResponseDTO(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ============================================================================
+# DTOs ESPECÍFICOS PARA ACTUALIZACIONES PARCIALES DE TEMA
+# Permiten validación fuerte y merge inteligente de cambios
+# ============================================================================
+
+class ColorShadesUpdateDTO(BaseModel):
+    """DTO para actualización parcial de tonos de color"""
+    # Cada shade es opcional para permitir actualizaciones parciales
+    shade_50: Optional[str] = None
+    shade_100: Optional[str] = None
+    shade_200: Optional[str] = None
+    shade_300: Optional[str] = None
+    shade_400: Optional[str] = None
+    shade_500: Optional[str] = None
+    shade_600: Optional[str] = None
+    shade_700: Optional[str] = None
+    shade_800: Optional[str] = None
+    shade_900: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, str]:
+        """Convertir a diccionario excluyendo valores None"""
+        result = {}
+        for field_name, field_value in self.model_dump().items():
+            if field_value is not None:
+                # Convertir shade_50 -> 50, shade_100 -> 100, etc.
+                shade_key = field_name.replace('shade_', '')
+                result[shade_key] = field_value
+        return result
+
+
+class ThemeColorUpdateDTO(BaseModel):
+    """DTO para actualización parcial de colores del tema"""
+    primary: Optional[Dict[str, str]] = None
+    secondary: Optional[Dict[str, str]] = None
+    accent: Optional[Dict[str, str]] = None
+    neutral: Optional[Dict[str, str]] = None
+
+    @validator('primary', 'secondary', 'accent', 'neutral')
+    def validate_color_values(cls, v):
+        """Validar que los colores sean códigos hex válidos"""
+        if v is not None:
+            for shade, color in v.items():
+                if not color.startswith('#') or len(color) not in [4, 7]:
+                    raise ValueError(f'Invalid color format: {color}. Must be hex color (e.g., #fff or #ffffff)')
+        return v
+
+
+class ThemeTypographyUpdateDTO(BaseModel):
+    """DTO para actualización parcial de tipografía"""
+    fontFamily: Optional[Dict[str, str]] = None
+    fontSize: Optional[Dict[str, str]] = None
+    fontWeight: Optional[Dict[str, int]] = None
+
+
+class ThemeLayoutUpdateDTO(BaseModel):
+    """DTO para actualización parcial de layout"""
+    borderRadius: Optional[Dict[str, str]] = None
+    spacing: Optional[Dict[str, str]] = None
+    shadows: Optional[Dict[str, str]] = None
+
+
+class ThemeUpdateDTO(BaseModel):
+    """DTO para actualización parcial de tema completo"""
+    mode: Optional[str] = None
+    name: Optional[str] = None
+    colors: Optional[ThemeColorUpdateDTO] = None
+    typography: Optional[ThemeTypographyUpdateDTO] = None
+    layout: Optional[ThemeLayoutUpdateDTO] = None
+
+    @validator('mode')
+    def validate_mode(cls, v):
+        if v is not None and v not in ['light', 'dark']:
+            raise ValueError('Mode must be either "light" or "dark"')
+        return v
+
+
+class LogoUpdateDTO(BaseModel):
+    """DTO para actualización parcial de logos"""
+    mainLogo: Optional[Dict[str, Any]] = None
+    favicon: Optional[Dict[str, Any]] = None
+    sidebarLogo: Optional[Dict[str, Any]] = None
+
+
+class BrandingUpdateDTO(BaseModel):
+    """DTO para actualización parcial de branding"""
+    appName: Optional[str] = None
+    appDescription: Optional[str] = None
+    tagline: Optional[str] = None
+    companyName: Optional[str] = None
+    welcomeMessage: Optional[str] = None
+    loginPageTitle: Optional[str] = None
+    loginPageDescription: Optional[str] = None
+    footerText: Optional[str] = None
+    supportEmail: Optional[str] = None
+
+    @validator('appName', 'appDescription', 'welcomeMessage')
+    def validate_non_empty_strings(cls, v):
+        if v is not None and (not v or not v.strip()):
+            raise ValueError('Field cannot be empty')
+        return v.strip() if v else v
+
+
+class PartialInterfaceConfigUpdateDTO(BaseModel):
+    """
+    DTO para actualizaciones parciales con validación fuerte.
+    Permite actualizar solo las propiedades especificadas.
+    Soporta merge inteligente de cambios.
+    """
+    theme: Optional[ThemeUpdateDTO] = None
+    logos: Optional[LogoUpdateDTO] = None
+    branding: Optional[BrandingUpdateDTO] = None
+    customCSS: Optional[str] = None
+    isActive: Optional[bool] = None
+
+    class Config:
+        # Ejemplo de uso en la documentación (Pydantic V2)
+        json_schema_extra = {
+            "example": {
+                "theme": {
+                    "colors": {
+                        "primary": {
+                            "500": "#3b82f6",
+                            "600": "#2563eb"
+                        }
+                    }
+                },
+                "branding": {
+                    "appName": "Mi Aplicación"
+                }
+            }
+        }

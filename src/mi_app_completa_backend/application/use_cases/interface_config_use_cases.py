@@ -7,7 +7,9 @@ from datetime import datetime
 
 from ..dto.interface_config_dto import (
     InterfaceConfigCreateDTO, InterfaceConfigUpdateDTO, InterfaceConfigResponseDTO,
-    PresetConfigCreateDTO, PresetConfigResponseDTO, ConfigHistoryResponseDTO
+    PresetConfigCreateDTO, PresetConfigResponseDTO, ConfigHistoryResponseDTO,
+    PartialInterfaceConfigUpdateDTO, ThemeUpdateDTO, ThemeColorUpdateDTO,
+    LogoUpdateDTO, BrandingUpdateDTO
 )
 from ...domain.entities.interface_config import (
     InterfaceConfig, PresetConfig, ConfigHistory,
@@ -152,6 +154,45 @@ class InterfaceConfigUseCases:
         
         return await self.preset_repo.delete_preset(preset_id)
 
+    async def update_preset(
+        self,
+        preset_id: str,
+        preset_data: PresetConfigCreateDTO,
+        updated_by: Optional[str] = None
+    ) -> Optional[PresetConfigResponseDTO]:
+        """
+        Actualizar preset existente (nombre, descripción, configuración)
+        No permite editar presets del sistema
+        """
+        # Obtener preset existente
+        existing_preset = await self.preset_repo.get_preset_by_id(preset_id)
+        if not existing_preset:
+            return None
+        
+        # Validar que no sea preset del sistema
+        if existing_preset.is_system:
+            raise ValueError("No se pueden editar presets del sistema")
+        
+        # Actualizar campos básicos
+        existing_preset.update_name(preset_data.name)
+        existing_preset.update_description(preset_data.description)
+        
+        # Actualizar configuración completa
+        updated_config = self._create_dto_to_entity(preset_data.config, updated_by)
+        existing_preset.update_config(updated_config)
+        
+        # Si se marca como default, desmarcar otros
+        if preset_data.isDefault and not existing_preset.is_default:
+            await self._unset_all_default_presets()
+            existing_preset.set_as_default()
+        elif not preset_data.isDefault and existing_preset.is_default:
+            existing_preset.unset_as_default()
+        
+        # Guardar cambios
+        updated_preset = await self.preset_repo.save_preset(existing_preset)
+        
+        return self._preset_to_response_dto(updated_preset)
+
     async def apply_preset(
         self,
         preset_id: str,
@@ -194,6 +235,63 @@ class InterfaceConfigUseCases:
         """Obtener historial de configuraciones"""
         history = await self.history_repo.get_history(limit)
         return [self._history_to_response_dto(entry) for entry in history]
+
+    async def update_config_partial(
+        self,
+        config_id: str,
+        partial_updates: PartialInterfaceConfigUpdateDTO,
+        updated_by: Optional[str] = None
+    ) -> Optional[InterfaceConfigResponseDTO]:
+        """
+        Actualizar configuración con merge inteligente de cambios parciales.
+        Solo actualiza los campos especificados, manteniendo el resto intactos.
+        
+        Args:
+            config_id: ID de la configuración a actualizar
+            partial_updates: DTO con actualizaciones parciales
+            updated_by: Usuario que realiza la actualización
+            
+        Returns:
+            Configuración actualizada o None si no existe
+        """
+        # Obtener configuración actual
+        existing_config = await self.config_repo.get_config_by_id(config_id)
+        if not existing_config:
+            return None
+        
+        # Aplicar actualizaciones parciales con merge inteligente
+        self._apply_partial_updates_to_config(existing_config, partial_updates)
+        
+        # Si se activa esta configuración, desactivar las demás
+        if partial_updates.isActive is True:
+            await self._deactivate_all_configs()
+        
+        # Guardar cambios
+        updated_config = await self.config_repo.save_config(existing_config)
+        
+        # Obtener siguiente versión para el historial
+        history = await self.history_repo.get_history_by_config_id(config_id, 1)
+        next_version = (history[0].version + 1) if history else 1
+        
+        # Determinar descripción del cambio
+        change_parts = []
+        if partial_updates.theme:
+            change_parts.append("tema")
+        if partial_updates.logos:
+            change_parts.append("logos")
+        if partial_updates.branding:
+            change_parts.append("branding")
+        change_description = f"Actualización parcial: {', '.join(change_parts)}" if change_parts else "Actualización parcial"
+        
+        # Guardar en historial
+        await self._save_to_history(
+            updated_config, 
+            next_version, 
+            updated_by, 
+            change_description
+        )
+        
+        return self._config_to_response_dto(updated_config)
 
     # Métodos privados
 
@@ -360,6 +458,164 @@ class InterfaceConfigUseCases:
         if updates.customCSS is not None:
             config.update_custom_css(updates.customCSS)
         
+        if updates.isActive is not None:
+            if updates.isActive:
+                config.activate()
+            else:
+                config.deactivate()
+
+    def _apply_partial_updates_to_config(
+        self,
+        config: InterfaceConfig,
+        updates: PartialInterfaceConfigUpdateDTO
+    ) -> None:
+        """
+        Aplicar actualizaciones parciales con merge inteligente.
+        Solo actualiza los campos especificados, manteniendo el resto intactos.
+        """
+        
+        # Actualizar tema (merge inteligente)
+        if updates.theme:
+            # Mantener el tema actual y solo actualizar lo especificado
+            current_theme_dict = config.theme.to_dict()
+            
+            # Actualizar mode si se especificó
+            if updates.theme.mode is not None:
+                current_theme_dict['mode'] = updates.theme.mode
+            
+            # Actualizar name si se especificó
+            if updates.theme.name is not None:
+                current_theme_dict['name'] = updates.theme.name
+            
+            # Merge inteligente de colores
+            if updates.theme.colors:
+                # Mantener colores actuales
+                current_colors = current_theme_dict['colors']
+                
+                # Actualizar solo los sets de colores especificados
+                if updates.theme.colors.primary is not None:
+                    # Merge de shades individuales
+                    current_colors['primary'].update(updates.theme.colors.primary)
+                
+                if updates.theme.colors.secondary is not None:
+                    current_colors['secondary'].update(updates.theme.colors.secondary)
+                
+                if updates.theme.colors.accent is not None:
+                    current_colors['accent'].update(updates.theme.colors.accent)
+                
+                if updates.theme.colors.neutral is not None:
+                    current_colors['neutral'].update(updates.theme.colors.neutral)
+            
+            # Merge de tipografía
+            if updates.theme.typography:
+                current_typo = current_theme_dict['typography']
+                if updates.theme.typography.fontFamily is not None:
+                    current_typo['fontFamily'].update(updates.theme.typography.fontFamily)
+                if updates.theme.typography.fontSize is not None:
+                    current_typo['fontSize'].update(updates.theme.typography.fontSize)
+                if updates.theme.typography.fontWeight is not None:
+                    current_typo['fontWeight'].update(updates.theme.typography.fontWeight)
+            
+            # Merge de layout
+            if updates.theme.layout:
+                current_layout = current_theme_dict['layout']
+                if updates.theme.layout.borderRadius is not None:
+                    current_layout['borderRadius'].update(updates.theme.layout.borderRadius)
+                if updates.theme.layout.spacing is not None:
+                    current_layout['spacing'].update(updates.theme.layout.spacing)
+                if updates.theme.layout.shadows is not None:
+                    current_layout['shadows'].update(updates.theme.layout.shadows)
+            
+            # Reconstruir entidades de tema
+            colors = ColorConfig(
+                primary=current_theme_dict['colors']['primary'],
+                secondary=current_theme_dict['colors']['secondary'],
+                accent=current_theme_dict['colors']['accent'],
+                neutral=current_theme_dict['colors']['neutral']
+            )
+            
+            typography = TypographyConfig(
+                font_family=current_theme_dict['typography']['fontFamily'],
+                font_size=current_theme_dict['typography']['fontSize'],
+                font_weight=current_theme_dict['typography']['fontWeight']
+            )
+            
+            layout = LayoutConfig(
+                border_radius=current_theme_dict['layout']['borderRadius'],
+                spacing=current_theme_dict['layout']['spacing'],
+                shadows=current_theme_dict['layout']['shadows']
+            )
+            
+            theme = ThemeConfig(
+                mode=current_theme_dict['mode'],
+                name=current_theme_dict['name'],
+                colors=colors,
+                typography=typography,
+                layout=layout
+            )
+            
+            config.update_theme(theme)
+        
+        # Actualizar logos (merge parcial)
+        if updates.logos:
+            current_logos = config.logos.to_dict()
+            
+            if updates.logos.mainLogo is not None:
+                current_logos['mainLogo'].update(updates.logos.mainLogo)
+            if updates.logos.favicon is not None:
+                current_logos['favicon'].update(updates.logos.favicon)
+            if updates.logos.sidebarLogo is not None:
+                current_logos['sidebarLogo'].update(updates.logos.sidebarLogo)
+            
+            logos = LogoConfig(
+                main_logo=current_logos['mainLogo'],
+                favicon=current_logos['favicon'],
+                sidebar_logo=current_logos['sidebarLogo']
+            )
+            config.update_logos(logos)
+        
+        # Actualizar branding (merge parcial)
+        if updates.branding:
+            current_branding = config.branding.to_dict()
+            
+            # Solo actualizar campos especificados
+            if updates.branding.appName is not None:
+                current_branding['appName'] = updates.branding.appName
+            if updates.branding.appDescription is not None:
+                current_branding['appDescription'] = updates.branding.appDescription
+            if updates.branding.welcomeMessage is not None:
+                current_branding['welcomeMessage'] = updates.branding.welcomeMessage
+            if updates.branding.loginPageTitle is not None:
+                current_branding['loginPageTitle'] = updates.branding.loginPageTitle
+            if updates.branding.loginPageDescription is not None:
+                current_branding['loginPageDescription'] = updates.branding.loginPageDescription
+            if updates.branding.tagline is not None:
+                current_branding['tagline'] = updates.branding.tagline
+            if updates.branding.companyName is not None:
+                current_branding['companyName'] = updates.branding.companyName
+            if updates.branding.footerText is not None:
+                current_branding['footerText'] = updates.branding.footerText
+            if updates.branding.supportEmail is not None:
+                current_branding['supportEmail'] = updates.branding.supportEmail
+            
+            branding = BrandingConfig(
+                app_name=current_branding['appName'],
+                app_description=current_branding['appDescription'],
+                welcome_message=current_branding['welcomeMessage'],
+                login_page_title=current_branding['loginPageTitle'],
+                login_page_description=current_branding['loginPageDescription'],
+                tagline=current_branding.get('tagline'),
+                company_name=current_branding.get('companyName'),
+                footer_text=current_branding.get('footerText'),
+                support_email=current_branding.get('supportEmail')
+            )
+            config.update_branding(branding)
+        
+        # Actualizar CSS personalizado
+        if updates.customCSS is not None:
+            config.update_custom_css(updates.customCSS)
+        
+        # Actualizar estado activo
         if updates.isActive is not None:
             if updates.isActive:
                 config.activate()

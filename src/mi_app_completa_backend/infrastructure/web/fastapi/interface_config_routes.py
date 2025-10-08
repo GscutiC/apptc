@@ -12,7 +12,8 @@ from ....domain.entities.auth_models import User
 from ....application.use_cases.interface_config_use_cases import InterfaceConfigUseCases
 from ....application.dto.interface_config_dto import (
     InterfaceConfigResponseDTO,
-    PresetConfigResponseDTO
+    PresetConfigResponseDTO,
+    PresetConfigCreateDTO
 )
 from ....infrastructure.persistence.mongodb.interface_config_repository_impl import (
     MongoInterfaceConfigRepository,
@@ -119,8 +120,25 @@ async def update_partial_config(
     use_cases: InterfaceConfigUseCases = Depends(get_interface_config_use_cases)
 ):
     """
-    Actualizar configuración actual (parcial)
+    Actualizar configuración actual con merge inteligente de cambios parciales.
+    Solo actualiza los campos especificados, manteniendo el resto intactos.
+    
     Requiere: Usuario autenticado con rol de administrador
+    
+    Ejemplo de body:
+    {
+        "theme": {
+            "colors": {
+                "primary": {
+                    "500": "#3b82f6",
+                    "600": "#2563eb"
+                }
+            }
+        },
+        "branding": {
+            "appName": "Nueva App"
+        }
+    }
     """
     # Validar permisos de admin
     user_role = current_user.role.get("name") if current_user.role else current_user.role_name
@@ -131,35 +149,112 @@ async def update_partial_config(
         )
 
     try:
-        logger.info(f"Config updated by admin: {current_user.email}")
+        logger.info(f"Partial config update by admin: {current_user.email}")
+        logger.debug(f"Update payload keys: {list(updates.keys())}")
 
         # Obtener configuración actual
-        current_config = await use_cases.get_current_config()
-        if not current_config:
+        current_config_dto = await use_cases.get_current_config()
+        if not current_config_dto:
             raise HTTPException(status_code=404, detail="No hay configuración activa")
 
-        # Importar DTO y convertir updates
-        from ....application.dto.interface_config_dto import InterfaceConfigUpdateDTO
+        # Importar DTO para actualizaciones parciales
+        from ....application.dto.interface_config_dto import PartialInterfaceConfigUpdateDTO
 
-        # Por ahora aplicamos updates directamente (TODO: mejorar validación con DTO)
-        updated_config = await use_cases.update_config(
-            config_id=current_config.id,
-            config_data=InterfaceConfigUpdateDTO(**updates),
+        # Convertir updates a DTO con validación fuerte
+        try:
+            partial_dto = PartialInterfaceConfigUpdateDTO(**updates)
+        except Exception as validation_error:
+            logger.error(f"Validation error: {validation_error}")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Error de validación: {str(validation_error)}"
+            )
+
+        # Aplicar actualizaciones parciales con merge inteligente
+        updated_config = await use_cases.update_config_partial(
+            config_id=current_config_dto.id,
+            partial_updates=partial_dto,
             updated_by=current_user.email
         )
 
         if not updated_config:
             raise HTTPException(status_code=404, detail="Error actualizando configuración")
 
+        logger.info(f"✅ Configuration updated successfully by {current_user.email}")
         return updated_config
+        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error updating config: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 
 # === ENDPOINTS PARA PRESETS ===
+
+@router.post("/presets", response_model=PresetConfigResponseDTO)
+async def create_preset(
+    preset_data: PresetConfigCreateDTO,
+    current_user: User = Depends(get_current_user),
+    use_cases: InterfaceConfigUseCases = Depends(get_interface_config_use_cases)
+):
+    """
+    Crear nuevo preset personalizado
+    Requiere: Usuario autenticado con rol de administrador
+    
+    Args:
+        preset_data: Datos del preset (name, description, config)
+        current_user: Usuario autenticado (inyectado por dependencia)
+        use_cases: Casos de uso de configuración (inyectado)
+        
+    Returns:
+        PresetConfigResponseDTO: Preset creado con su ID
+        
+    Raises:
+        403: Si el usuario no tiene permisos de administrador
+        400: Si los datos son inválidos o intenta marcar como preset del sistema
+        500: Error interno del servidor
+    """
+    # Validar permisos de admin
+    user_role = current_user.role.get("name") if current_user.role else current_user.role_name
+    if user_role not in ["admin", "super_admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Se requieren permisos de administrador para crear presets"
+        )
+
+    try:
+        logger.info(f"Creating preset '{preset_data.name}' by admin: {current_user.email}")
+
+        # Los presets personalizados NUNCA deben ser del sistema
+        if preset_data.isSystem:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Los presets creados por usuarios no pueden marcarse como presets del sistema"
+            )
+
+        # Crear preset usando el caso de uso
+        new_preset = await use_cases.create_preset(
+            preset_data=preset_data,
+            created_by=current_user.email
+        )
+
+        logger.info(f"✅ Preset '{new_preset.name}' created successfully with ID: {new_preset.id}")
+        return new_preset
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        # Errores de validación del use case
+        logger.warning(f"Validation error creating preset: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating preset: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creando preset: {str(e)}"
+        )
+
 
 @router.get("/presets")
 async def get_presets(
@@ -281,6 +376,72 @@ async def delete_preset(
     except Exception as e:
         logger.error(f"Error deleting preset {preset_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/presets/{preset_id}", response_model=PresetConfigResponseDTO)
+async def update_preset(
+    preset_id: str,
+    preset_data: PresetConfigCreateDTO,
+    current_user: User = Depends(get_current_user),
+    use_cases: InterfaceConfigUseCases = Depends(get_interface_config_use_cases)
+):
+    """
+    Actualizar preset existente (nombre, descripción, colores)
+    No permite editar presets del sistema
+    Requiere: Usuario autenticado con rol de administrador
+    
+    Args:
+        preset_id: ID del preset a actualizar
+        preset_data: Nuevos datos del preset (name, description, config)
+        current_user: Usuario autenticado (inyectado por dependencia)
+        use_cases: Casos de uso de configuración (inyectado)
+        
+    Returns:
+        PresetConfigResponseDTO: Preset actualizado
+        
+    Raises:
+        403: Si el usuario no tiene permisos de administrador
+        404: Si el preset no existe
+        400: Si intenta editar un preset del sistema
+        500: Error interno del servidor
+    """
+    # Validar permisos de admin
+    user_role = current_user.role.get("name") if current_user.role else current_user.role_name
+    if user_role not in ["admin", "super_admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Se requieren permisos de administrador para editar presets"
+        )
+
+    try:
+        logger.info(f"Updating preset {preset_id} by admin: {current_user.email}")
+
+        # Actualizar preset usando el caso de uso
+        updated_preset = await use_cases.update_preset(
+            preset_id=preset_id,
+            preset_data=preset_data,
+            updated_by=current_user.email
+        )
+
+        if not updated_preset:
+            raise HTTPException(status_code=404, detail="Preset no encontrado")
+
+        logger.info(f"✅ Preset '{updated_preset.name}' updated successfully")
+        return updated_preset
+
+    except ValueError as e:
+        # Error de validación (ej: intento de editar preset del sistema)
+        logger.warning(f"Validation error updating preset: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating preset {preset_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error actualizando preset: {str(e)}"
+        )
+
 
 @router.get("/history")
 async def get_config_history(

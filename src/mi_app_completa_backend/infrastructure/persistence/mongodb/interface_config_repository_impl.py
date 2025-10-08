@@ -407,6 +407,15 @@ class MongoPresetConfigRepository(PresetConfigRepository):
                 result = await self.collection.insert_one(preset_dict)
                 preset.id = str(result.inserted_id)
 
+            # ✅ IMPORTANTE: Invalidar cachés después de guardar
+            preset_cache.delete(self.CACHE_KEY_ALL)
+            preset_cache.delete(self.CACHE_KEY_SYSTEM)
+            preset_cache.delete(self.CACHE_KEY_CUSTOM)
+            if preset.id:
+                preset_cache.delete(f"{self.CACHE_KEY_PREFIX}{preset.id}")
+            
+            logger.info(f"✅ Preset cache invalidated after saving: {preset.name}")
+
             return preset
         except Exception as e:
             logger.error(f"Error saving preset: {e}")
@@ -422,6 +431,15 @@ class MongoPresetConfigRepository(PresetConfigRepository):
                 return False
 
             result = await self.collection.delete_one({"_id": ObjectId(preset_id)})
+            
+            # ✅ Invalidar cachés después de eliminar
+            if result.deleted_count > 0:
+                preset_cache.delete(self.CACHE_KEY_ALL)
+                preset_cache.delete(self.CACHE_KEY_SYSTEM)
+                preset_cache.delete(self.CACHE_KEY_CUSTOM)
+                preset_cache.delete(f"{self.CACHE_KEY_PREFIX}{preset_id}")
+                logger.info(f"✅ Preset cache invalidated after deleting: {preset_id}")
+            
             return result.deleted_count > 0
         except Exception as e:
             logger.error(f"Error deleting preset {preset_id}: {e}")
@@ -441,6 +459,14 @@ class MongoPresetConfigRepository(PresetConfigRepository):
                 {"_id": ObjectId(preset_id)},
                 {"$set": {"isDefault": True, "updatedAt": datetime.now(timezone.utc)}}
             )
+
+            # ✅ Invalidar cachés después de cambiar el default
+            if result.matched_count > 0:
+                preset_cache.delete(self.CACHE_KEY_ALL)
+                preset_cache.delete(self.CACHE_KEY_SYSTEM)
+                preset_cache.delete(self.CACHE_KEY_CUSTOM)
+                preset_cache.delete(f"{self.CACHE_KEY_PREFIX}{preset_id}")
+                logger.info(f"✅ Preset cache invalidated after setting default: {preset_id}")
 
             return result.matched_count > 0
         except Exception as e:
