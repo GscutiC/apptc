@@ -12,6 +12,8 @@ from ....infrastructure.services.simple_ai_service import SimpleAIService
 from ....infrastructure.config.database import DatabaseConfig
 from .auth_routes import router as auth_router
 from .interface_config_routes import router as interface_config_router
+from .contextual_config_routes import router as contextual_config_router
+from .file_routes import router as file_router
 from ....domain.entities.auth_models import User
 from ....domain.value_objects.auth_decorators import (
     requires_permission, requires_role, requires_active_user,
@@ -26,11 +28,7 @@ app = FastAPI(
 
 # Configurar CORS de manera segura y adaptativa
 debug_mode = os.getenv("DEBUG", "False").lower() == "true"
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
-
-# En modo debug, permitir más orígenes para desarrollo
-if debug_mode:
-    cors_origins.extend(["http://localhost:5173", "http://127.0.0.1:5173"])  # Vite dev server
+cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
 
 # Limpiar orígenes y remover espacios
 cors_origins = [origin.strip() for origin in cors_origins if origin.strip()]
@@ -57,8 +55,10 @@ app.include_router(auth_router, prefix="/auth", tags=["authentication"])
 # Incluir rutas de configuración de interfaz
 app.include_router(interface_config_router)
 
+# Incluir rutas de configuración contextual (FASE 3)
+app.include_router(contextual_config_router)
+
 # Incluir rutas de archivos
-from .file_routes import router as file_router
 app.include_router(file_router)
 
 # Configuración de dependencias
@@ -127,8 +127,6 @@ async def debug_cors():
 async def debug_create_user(user_data: dict):
     """Endpoint de debug para crear usuarios desde el frontend (SOLO PARA DESARROLLO)"""
     try:
-        print(f"🔍 Debug: Recibido desde frontend: {user_data}")
-        
         from ....infrastructure.config.database import get_database
         from ....infrastructure.persistence.mongodb.auth_repository_impl import MongoUserRepository
         from ....domain.entities.auth_models import UserCreate
@@ -174,7 +172,6 @@ async def debug_create_user(user_data: dict):
         }
         
     except Exception as e:
-        print(f"❌ Error en debug_create_user: {e}")
         return {
             "success": False,
             "message": f"Error: {str(e)}"
@@ -199,9 +196,6 @@ async def debug_sync_user_role(clerk_id: str):
                 "message": "Usuario no encontrado"
             }
         
-        print(f"🔄 Sincronizando rol para usuario: {user.email}")
-        print(f"📋 Role actual: role_name='{user.role_name}', role_id='{user.role_id}'")
-        
         # Actualizar usando el método que ya sincroniza role_id y role_name
         user_update = UserUpdate(role_name=user.role_name)
         updated_user = await user_repo.update_user(clerk_id, user_update)
@@ -224,7 +218,6 @@ async def debug_sync_user_role(clerk_id: str):
             }
             
     except Exception as e:
-        print(f"❌ Error en debug_sync_user_role: {e}")
         return {
             "success": False,
             "message": f"Error: {str(e)}"
@@ -261,7 +254,6 @@ async def debug_get_user_by_clerk_id(clerk_id: str):
         }
         
     except Exception as e:
-        print(f"❌ Error en debug_get_user_by_clerk_id: {e}")
         return {
             "success": False,
             "message": f"Error: {str(e)}"
@@ -314,7 +306,6 @@ async def debug_verify_token(request: Request):
             }
             
     except Exception as e:
-        print(f"❌ Error en debug_verify_token: {e}")
         return {
             "success": False,
             "message": f"Error: {str(e)}"
@@ -394,7 +385,6 @@ async def get_users(
             for user in users
         ]
     except Exception as e:
-        print(f"❌ Error en get_users: {e}")
         raise HTTPException(status_code=500, detail=f"Error obteniendo usuarios: {str(e)}")
 
 @app.get("/users/{user_id}", response_model=UserResponseDTO)
@@ -551,7 +541,7 @@ async def shutdown_event():
         if _db_config:
             _db_config.close_connection()
     except Exception as e:
-        print(f"Error durante shutdown: {e}")
+        pass  # Log si es necesario en producción
 
 if __name__ == "__main__":
     import uvicorn

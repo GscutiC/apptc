@@ -78,7 +78,7 @@ class AuditService:
             
         except Exception as e:
             # No queremos que errores en auditoría afecten la funcionalidad principal
-            print(f"Error logging audit action: {e}")
+            pass  # Silently fail for audit errors
     
     # Métodos de conveniencia para acciones comunes
     

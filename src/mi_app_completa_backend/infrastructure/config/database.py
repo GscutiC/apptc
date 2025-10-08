@@ -1,17 +1,15 @@
-import os
 from pymongo import MongoClient
 from pymongo.database import Database
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from dotenv import load_dotenv
+from .settings import settings
 
-load_dotenv()
 
 class DatabaseConfig:
     """Configuración de la base de datos"""
 
     def __init__(self):
-        self.mongodb_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
-        self.database_name = os.getenv("DATABASE_NAME", "mi_app_completa_db")
+        self.mongodb_url = settings.mongodb_url
+        self.database_name = settings.database_name
         self._client = None
         self._database = None
         self._async_client = None

@@ -58,20 +58,13 @@ async def verify_clerk_token(credentials: HTTPAuthorizationCredentials = Depends
     debug_mode = os.getenv("DEBUG", "False").lower() == "true"
     
     try:
-        if debug_mode:
-            print(f"🔍 Debug: Verificando token con issuer: {CLERK_JWT_ISSUER}")
-        
         # Usar PyJWKClient para obtener las claves automáticamente
         jwks_url = f"{CLERK_JWT_ISSUER}/.well-known/jwks.json"
-        if debug_mode:
-            print(f"🔍 Debug: JWKS URL: {jwks_url}")
         
         jwks_client = PyJWKClient(jwks_url)
         
         # Obtener la clave de firma del token
         signing_key = jwks_client.get_signing_key_from_jwt(credentials.credentials)
-        if debug_mode:
-            print(f"🔍 Debug: Signing key obtenida exitosamente")
         
         # Configuración JWT adaptativa según entorno
         jwt_options = {
@@ -91,27 +84,19 @@ async def verify_clerk_token(credentials: HTTPAuthorizationCredentials = Depends
             options=jwt_options
         )
         
-        if debug_mode:
-            print(f"🔍 Debug: Token decoded successfully. User: {payload.get('sub')}")
         return payload
         
     except jwt.ExpiredSignatureError as e:
-        if debug_mode:
-            print(f"🚨 Debug: Token expired: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired"
         )
     except jwt.InvalidTokenError as e:
-        if debug_mode:
-            print(f"🚨 Debug: Invalid token: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token"
         )
     except Exception as e:
-        if debug_mode:
-            print(f"🚨 Debug: Token verification failed: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Token verification failed: {str(e)}"
@@ -175,11 +160,6 @@ async def get_current_user_info(
     current_user: UserWithRole = Depends(get_current_user)
 ):
     """Obtener información del usuario actual"""
-    # Debug info (solo en modo debug)
-    if os.getenv("DEBUG", "False").lower() == "true":
-        auth_header = request.headers.get("authorization", "No Authorization header")
-        print(f"🔍 DEBUG /auth/me: Authorization header: {auth_header[:50]}...")
-        print(f"🔍 DEBUG /auth/me: User authenticated: {current_user.email}")
     return current_user
 
 @router.get("/me-bypass/{clerk_id}")
@@ -188,18 +168,10 @@ async def get_current_user_bypass(
     user_repo: UserRepository = Depends(get_user_repository)
 ):
     """ENDPOINT TEMPORAL: Bypass JWT para debuggear"""
-    debug_mode = os.getenv("DEBUG", "False").lower() == "true"
-    if debug_mode:
-        print(f"🔍 DEBUG BYPASS: Buscando usuario: {clerk_id}")
-    
     user = await user_repo.get_user_with_role(clerk_id)
     if not user:
-        if debug_mode:
-            print(f"❌ DEBUG BYPASS: Usuario no encontrado en DB")
         raise HTTPException(status_code=404, detail="User not found")
-    
-    if debug_mode:
-        print(f"✅ DEBUG BYPASS: Usuario encontrado: {user.email}")
+
     return user
 
 @router.put("/me", response_model=UserWithRole)

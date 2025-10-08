@@ -76,8 +76,9 @@ class LogoConfig:
 class BrandingConfig:
     """Value Object para configuración de branding"""
     def __init__(self, app_name: str, app_description: str, welcome_message: str,
-                 login_page_title: str, login_page_description: str,
-                 tagline: Optional[str] = None, company_name: Optional[str] = None):
+                 login_page_title: str = "", login_page_description: str = "",
+                 tagline: Optional[str] = None, company_name: Optional[str] = None,
+                 footer_text: Optional[str] = None, support_email: Optional[str] = None):
         self.app_name = app_name
         self.app_description = app_description
         self.tagline = tagline
@@ -85,6 +86,8 @@ class BrandingConfig:
         self.welcome_message = welcome_message
         self.login_page_title = login_page_title
         self.login_page_description = login_page_description
+        self.footer_text = footer_text
+        self.support_email = support_email
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -94,7 +97,9 @@ class BrandingConfig:
             'companyName': self.company_name,
             'welcomeMessage': self.welcome_message,
             'loginPageTitle': self.login_page_title,
-            'loginPageDescription': self.login_page_description
+            'loginPageDescription': self.login_page_description,
+            'footerText': self.footer_text,
+            'supportEmail': self.support_email
         }
 
 

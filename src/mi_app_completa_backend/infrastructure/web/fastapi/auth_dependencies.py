@@ -13,6 +13,9 @@ from ....domain.entities.auth_models import User
 from ....domain.repositories.auth_repository import UserRepository
 from ...persistence.mongodb.auth_repository_impl import MongoUserRepository
 from ...config.database import get_database
+from ...utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 security = HTTPBearer()
 
@@ -63,21 +66,13 @@ async def verify_clerk_token(credentials: HTTPAuthorizationCredentials = Depends
         )
     
     try:
-        if debug_mode:
-            print(f"🔍 Debug: Verificando token con issuer: {CLERK_JWT_ISSUER}")
-        
         # Usar PyJWKClient para obtener las claves automáticamente
         jwks_url = f"{CLERK_JWT_ISSUER}/.well-known/jwks.json"
-        if debug_mode:
-            print(f"🔍 Debug: JWKS URL: {jwks_url}")
-        
         jwks_client = PyJWKClient(jwks_url)
-        
+
         # Obtener la clave de firma del token
         signing_key = jwks_client.get_signing_key_from_jwt(credentials.credentials)
-        if debug_mode:
-            print(f"🔍 Debug: Signing key obtenida exitosamente")
-        
+
         # Configuración JWT adaptativa según entorno
         jwt_options = {
             "verify_signature": True,  # Siempre verificar firma
@@ -86,7 +81,7 @@ async def verify_clerk_token(credentials: HTTPAuthorizationCredentials = Depends
             "verify_iat": not debug_mode,  # Más tolerante en desarrollo
             "verify_nbf": not debug_mode,  # Más tolerante en desarrollo
         }
-        
+
         # Decodificar y verificar el token
         payload = jwt.decode(
             credentials.credentials,
@@ -95,28 +90,23 @@ async def verify_clerk_token(credentials: HTTPAuthorizationCredentials = Depends
             issuer=CLERK_JWT_ISSUER,
             options=jwt_options
         )
-        
-        if debug_mode:
-            print(f"🔍 Debug: Token decoded successfully. User: {payload.get('sub')}")
+
         return payload
-        
-    except jwt.ExpiredSignatureError as e:
-        if debug_mode:
-            print(f"🚨 Debug: Token expired: {str(e)}")
+
+    except jwt.ExpiredSignatureError:
+        logger.warning("Token expired for user")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired"
         )
     except jwt.InvalidTokenError as e:
-        if debug_mode:
-            print(f"🚨 Debug: Invalid token: {str(e)}")
+        logger.warning(f"Invalid token provided: {type(e).__name__}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token"
         )
     except Exception as e:
-        if debug_mode:
-            print(f"🚨 Debug: Token verification failed: {str(e)}")
+        logger.error(f"Token verification failed: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Token verification failed: {str(e)}"
@@ -127,10 +117,10 @@ async def get_current_user(
     user_repo: UserRepository = Depends(get_user_repository)
 ) -> User:
     """
-    Obtener usuario actual autenticado
+    Obtener usuario actual autenticado con información de rol
     """
     from ....domain.entities.auth_models import UserCreate, UserWithRole
-    
+
     clerk_id = token_data.get("sub")
 
     if not clerk_id:
@@ -159,18 +149,17 @@ async def get_current_user(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error creating user"
             )
-    
+
     if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not active"
         )
-    
+
     # Actualizar último login
     # await user_repo.update_last_login(clerk_id)  # Comentado por ahora si no existe el método
-    # Login actualizado silenciosamente
-    
-    # Convertir UserWithRole a User para compatibilidad
+
+    # Convertir UserWithRole a User con información completa del rol
     user_dict = {
         "id": user.id,
         "clerk_id": user.clerk_id,
@@ -180,15 +169,15 @@ async def get_current_user(
         "full_name": user.full_name,
         "image_url": user.image_url,
         "phone_number": user.phone_number,
-        "role_id": None,  # No necesario para User
+        "role_id": None,
         "role_name": user.role.get("name") if user.role else "user",
+        "role": user.role,  # Incluir información completa del rol
         "is_active": user.is_active,
         "last_login": user.last_login,
         "created_at": user.created_at,
         "updated_at": user.updated_at
     }
-    
+
     user_obj = User(**user_dict)
-    user_obj.role = user.role  # Añadir la información completa del rol
-    
+
     return user_obj

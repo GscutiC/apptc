@@ -282,7 +282,9 @@ class InterfaceConfigUseCases:
             login_page_title=dto.branding.loginPageTitle,
             login_page_description=dto.branding.loginPageDescription,
             tagline=dto.branding.tagline,
-            company_name=dto.branding.companyName
+            company_name=dto.branding.companyName,
+            footer_text=getattr(dto.branding, 'footerText', None),
+            support_email=getattr(dto.branding, 'supportEmail', None)
         )
         
         # Crear configuración de interfaz
@@ -349,7 +351,9 @@ class InterfaceConfigUseCases:
                 login_page_title=updates.branding.loginPageTitle,
                 login_page_description=updates.branding.loginPageDescription,
                 tagline=updates.branding.tagline,
-                company_name=updates.branding.companyName
+                company_name=updates.branding.companyName,
+                footer_text=getattr(updates.branding, 'footerText', None),
+                support_email=getattr(updates.branding, 'supportEmail', None)
             )
             config.update_branding(branding)
         

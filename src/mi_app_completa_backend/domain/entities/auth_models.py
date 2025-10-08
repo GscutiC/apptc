@@ -160,9 +160,10 @@ class User(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
         arbitrary_types_allowed=True,
-        json_encoders={ObjectId: str}
+        json_encoders={ObjectId: str},
+        extra='allow'  # Permitir campos adicionales como 'role'
     )
-    
+
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
     clerk_id: str = Field(..., unique=True)  # ID de Clerk
     email: str = Field(...)
@@ -173,6 +174,7 @@ class User(BaseModel):
     phone_number: Optional[str] = Field(None)
     role_id: Optional[PyObjectId] = Field(None)  # Referencia al rol
     role_name: str = Field(default="user")  # Nombre del rol para fácil acceso
+    role: Optional[dict] = Field(None)  # Información completa del rol (opcional)
     is_active: bool = Field(default=True)
     last_login: Optional[datetime] = Field(None)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

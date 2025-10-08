@@ -1,30 +1,95 @@
 #!/usr/bin/env python3
 """
-Script de inicio simple para el backend FastAPI
+Script de inicio para el backend FastAPI con soporte para múltiples entornos
 """
 import sys
 import os
+import argparse
+from pathlib import Path
 
 # Agregar el directorio src al path de Python
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.join(backend_dir, 'src')
 sys.path.insert(0, src_dir)
 
-if __name__ == "__main__":
-    import uvicorn
-    from mi_app_completa_backend.infrastructure.web.fastapi.main import app
+
+def parse_arguments():
+    """Parsear argumentos de línea de comandos"""
+    parser = argparse.ArgumentParser(description="Iniciar el servidor FastAPI")
+    parser.add_argument(
+        '--env', 
+        choices=['development', 'production'],
+        default='development',
+        help='Entorno de ejecución (default: development)'
+    )
+    parser.add_argument(
+        '--env-file',
+        type=str,
+        help='Ruta a archivo .env específico'
+    )
+    parser.add_argument(
+        '--host',
+        type=str,
+        help='Host del servidor (sobrescribe configuración)'
+    )
+    parser.add_argument(
+        '--port',
+        type=int,
+        help='Puerto del servidor (sobrescribe configuración)'
+    )
+    parser.add_argument(
+        '--reload',
+        action='store_true',
+        help='Activar modo reload (solo para desarrollo)'
+    )
+    return parser.parse_args()
+
+
+def setup_environment(args):
+    """Configurar el entorno basado en argumentos"""
+    # Establecer variable de entorno ENVIRONMENT
+    os.environ['ENVIRONMENT'] = args.env
     
-    # Configurar para desarrollo sin base de datos por ahora
-    os.environ.setdefault('MONGODB_URL', 'mongodb://localhost:27017')
-    os.environ.setdefault('DATABASE_NAME', 'test_db')
-    # Configurar Clerk (deberás reemplazar con tus claves reales)
-    os.environ.setdefault('CLERK_SECRET_KEY', 'tu_clerk_secret_key_aqui')
-    os.environ.setdefault('CLERK_WEBHOOK_SECRET', 'tu_webhook_secret_aqui')
+    # Si se especifica un archivo .env personalizado, configurarlo
+    if args.env_file:
+        env_file_path = Path(args.env_file)
+        if not env_file_path.exists():
+            print(f"Error: El archivo .env especificado no existe: {args.env_file}")
+            sys.exit(1)
+        os.environ['CUSTOM_ENV_FILE'] = str(env_file_path)
+
+
+if __name__ == "__main__":
+    args = parse_arguments()
+    
+    # Configurar entorno
+    setup_environment(args)
+    
+    # Importar configuración después de establecer el entorno
+    from mi_app_completa_backend.infrastructure.config.settings import settings
+    import uvicorn
+    
+    # Usar argumentos de CLI si se proporcionan, sino usar configuración
+    host = args.host if args.host else settings.api_host
+    port = args.port if args.port else settings.api_port
+    
+    # El modo reload solo está disponible en desarrollo
+    reload_mode = False
+    if args.env == 'development':
+        reload_mode = args.reload or settings.debug
+    
+    # Configurar directorios de reload solo en desarrollo
+    reload_dirs = [src_dir] if reload_mode else None
+    
+    print(f"[SERVER] Iniciando servidor en modo {args.env}")
+    print(f"[URL] http://{host}:{port}")
+    print(f"[RELOAD] {'Activado' if reload_mode else 'Desactivado'}")
+    print(f"[DEBUG] {'Activado' if settings.debug else 'Desactivado'}")
     
     uvicorn.run(
         "mi_app_completa_backend.infrastructure.web.fastapi.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        reload_dirs=[src_dir]
+        host=host,
+        port=port,
+        reload=reload_mode,
+        reload_dirs=reload_dirs
     )

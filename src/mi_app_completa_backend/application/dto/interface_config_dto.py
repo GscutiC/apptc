@@ -40,7 +40,7 @@ class LayoutConfigDTO(BaseModel):
 class LogoConfigDTO(BaseModel):
     """DTO para configuración de logos"""
     mainLogo: Dict[str, Any]
-    favicon: Dict[str, Optional[str]]
+    favicon: Dict[str, Any]
     sidebarLogo: Dict[str, Any]
 
 
@@ -51,10 +51,12 @@ class BrandingConfigDTO(BaseModel):
     tagline: Optional[str] = None
     companyName: Optional[str] = None
     welcomeMessage: str
-    loginPageTitle: str
-    loginPageDescription: str
+    loginPageTitle: str = ""
+    loginPageDescription: str = ""
+    footerText: Optional[str] = None
+    supportEmail: Optional[str] = None
 
-    @validator('appName', 'appDescription', 'welcomeMessage', 'loginPageTitle', 'loginPageDescription')
+    @validator('appName', 'appDescription', 'welcomeMessage')
     def validate_required_strings(cls, v):
         if not v or not v.strip():
             raise ValueError('Field cannot be empty')

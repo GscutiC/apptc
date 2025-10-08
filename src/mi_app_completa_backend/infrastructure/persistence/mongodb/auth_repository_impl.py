@@ -4,6 +4,9 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 from ....domain.repositories.auth_repository import UserRepository, RoleRepository
 from ....domain.entities.auth_models import User, Role, UserCreate, UserUpdate, UserWithRole
+from ...utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 class MongoUserRepository(UserRepository):
     """Implementación MongoDB para usuarios"""
@@ -15,18 +18,15 @@ class MongoUserRepository(UserRepository):
     
     async def create_user(self, user_data: UserCreate) -> User:
         """Crear un nuevo usuario"""
-        print(f"📝 create_user: Creando usuario con datos: {user_data.dict()}")
-        
         # Verificar si ya existe
         existing = await self.get_user_by_clerk_id(user_data.clerk_id)
         if existing:
-            print(f"⚠️ Usuario ya existe: {existing.clerk_id}")
+            logger.warning(f"User already exists: {existing.clerk_id}")
             raise ValueError(f"Usuario con clerk_id {user_data.clerk_id} ya existe")
-        
+
         # Obtener rol por defecto
         default_role = await self.roles_collection.find_one({"name": "user"})
-        print(f"🔍 Rol por defecto encontrado: {default_role}")
-        
+
         user_dict = user_data.dict()
         user_dict.update({
             "role_id": default_role["_id"] if default_role else None,
@@ -35,12 +35,10 @@ class MongoUserRepository(UserRepository):
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc)
         })
-        
-        print(f"📋 Datos finales a insertar: {user_dict}")
+
         result = await self.users_collection.insert_one(user_dict)
         user_dict["_id"] = result.inserted_id
-        print(f"✅ Usuario insertado con ID: {result.inserted_id}")
-        
+
         return User(**user_dict)
     
     async def get_user_by_clerk_id(self, clerk_id: str) -> Optional[User]:
@@ -59,8 +57,6 @@ class MongoUserRepository(UserRepository):
     
     async def get_user_with_role(self, clerk_id: str) -> Optional[UserWithRole]:
         """Obtener usuario con información completa del rol"""
-        print(f"🔍 get_user_with_role: Buscando usuario con clerk_id: {clerk_id}")
-        
         pipeline = [
             {"$match": {"clerk_id": clerk_id}},
             {
@@ -79,28 +75,23 @@ class MongoUserRepository(UserRepository):
             },
             {"$unset": ["role_info", "role_id"]}
         ]
-        
-        print(f"📝 Pipeline: {pipeline}")
+
         result = await self.users_collection.aggregate(pipeline).to_list(1)
-        print(f"📊 Resultado agregación: {result}")
-        
+
         if result:
             user_data = result[0]
-            # print(f"📋 Datos usuario antes de procesar: {user_data}")
             user_data["id"] = str(user_data.pop("_id"))
             if user_data.get("role") and user_data["role"].get("_id"):
                 user_data["role"]["id"] = str(user_data["role"].pop("_id"))
-            # print(f"📋 Datos usuario después de procesar: {user_data}")
+
             try:
                 user_with_role = UserWithRole(**user_data)
-                print(f"✅ UserWithRole creado exitosamente: {user_with_role.email}")
                 return user_with_role
             except Exception as e:
-                print(f"❌ Error creando UserWithRole: {e}")
-                print(f"📋 Datos que causaron el error: {user_data}")
+                logger.error(f"Error creating UserWithRole: {e}")
                 return None
         else:
-            print(f"❌ No se encontró usuario con clerk_id: {clerk_id}")
+            logger.warning(f"User not found with clerk_id: {clerk_id}")
             return None
     
     async def update_user(self, clerk_id: str, user_data: UserUpdate) -> Optional[User]:
