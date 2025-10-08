@@ -10,6 +10,7 @@ from ....infrastructure.persistence.mongodb.user_repository_impl import MongoUse
 from ....infrastructure.persistence.mongodb.message_repository_impl import MongoMessageRepository
 from ....infrastructure.services.simple_ai_service import SimpleAIService
 from ....infrastructure.config.database import DatabaseConfig
+from ....infrastructure.config.settings import get_settings
 from .auth_routes import router as auth_router
 from .interface_config_routes import router as interface_config_router
 from .contextual_config_routes import router as contextual_config_router
@@ -20,22 +21,19 @@ from ....domain.value_objects.auth_decorators import (
     verify_active_user, verify_permission, verify_role
 )
 
+# Obtener configuración centralizada
+settings = get_settings()
+
 app = FastAPI(
     title="mi_app_completa_backend API",
     description="API con arquitectura hexagonal usando python y mongodb",
     version="1.0.0"
 )
 
-# Configurar CORS de manera segura y adaptativa
-debug_mode = os.getenv("DEBUG", "False").lower() == "true"
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
-
-# Limpiar orígenes y remover espacios
-cors_origins = [origin.strip() for origin in cors_origins if origin.strip()]
-
+# Configurar CORS usando configuración centralizada
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=settings.get_cors_origins_list(),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=[
@@ -46,7 +44,7 @@ app.add_middleware(
         "Access-Control-Allow-Headers",
         "Access-Control-Allow-Origin",
         "Access-Control-Allow-Methods"
-    ] if not debug_mode else ["*"],  # Más restrictivo en producción
+    ] if not settings.debug else ["*"],  # Más restrictivo en producción
 )
 
 # Incluir rutas de autenticación

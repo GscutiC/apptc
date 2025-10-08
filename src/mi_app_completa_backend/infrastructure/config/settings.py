@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     # API
     api_host: str = Field(default="0.0.0.0", description="Host de la API")
     api_port: int = Field(default=8000, description="Puerto de la API")
+    base_url: str = Field(
+        default="http://localhost:8000",
+        description="URL base de la API para generación de URLs públicas (cambiar en producción)"
+    )
     debug: bool = Field(default=True, description="Modo de desarrollo")
     
     # CORS

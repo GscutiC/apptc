@@ -30,19 +30,22 @@ def get_user_repository() -> MongoUserRepository:
     return MongoUserRepository(db)
 
 
-def get_current_user_optional(
+async def get_current_user_optional(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     user_repo: UserRepository = Depends(get_user_repository)
 ) -> Optional[User]:
     """
-    Obtener usuario actual (opcional, no lanza error si no está autenticado)
+    Obtener usuario actual (opcional, no lanza error si no está autenticado).
+    Útil para endpoints que aceptan usuarios autenticados y no autenticados.
     """
     if not credentials:
         return None
     
     try:
-        # TODO: Implementar validación real con Clerk
-        # Por ahora, retornamos None para simular usuario no autenticado
+        # Intentar obtener usuario usando verify_clerk_token
+        return await get_current_user(credentials, user_repo)
+    except HTTPException:
+        # Si falla la autenticación, retornar None (no lanzar error)
         return None
     except Exception:
         return None
@@ -155,9 +158,6 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not active"
         )
-
-    # Actualizar último login
-    # await user_repo.update_last_login(clerk_id)  # Comentado por ahora si no existe el método
 
     # Convertir UserWithRole a User con información completa del rol
     user_dict = {

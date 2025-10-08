@@ -13,11 +13,17 @@ from ....application.dto.file_dto import (
     FileUpdateDTO, ErrorResponseDTO, FileUploadRequest
 )
 from ...persistence.file_repository import FileSystemFileRepository
+from ...config.settings import get_settings
+from .auth_dependencies import get_current_user_optional, get_current_user
+from ....domain.entities.auth_models import User
 
+
+# Obtener configuración
+settings = get_settings()
 
 # Crear instancias
 file_repository = FileSystemFileRepository("file_metadata.json")
-file_use_cases = FileUseCases(file_repository, "uploads")
+file_use_cases = FileUseCases(file_repository, settings, "uploads")
 
 # Router
 router = APIRouter(prefix="/api/files", tags=["Files"])
@@ -27,7 +33,8 @@ router = APIRouter(prefix="/api/files", tags=["Files"])
 async def upload_file(
     file: UploadFile = File(...),
     category: str = Query(default="image", description="File category: logo, favicon, image, document"),
-    description: Optional[str] = Query(default=None, description="File description")
+    description: Optional[str] = Query(default=None, description="File description"),
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """
     Subir un archivo al servidor
@@ -47,13 +54,16 @@ async def upload_file(
             if not mime_type:
                 mime_type = 'application/octet-stream'
         
+        # Obtener created_by del usuario autenticado (si existe)
+        created_by = current_user.clerk_id if current_user else None
+        
         # Subir archivo usando casos de uso
         result = await file_use_cases.upload_file(
             file_content=content,
             original_filename=file.filename or "unnamed_file",
             mime_type=mime_type,
             category=category,
-            created_by=None  # TODO: Obtener del contexto de autenticación
+            created_by=created_by
         )
         
         return result
@@ -185,13 +195,18 @@ async def list_files(
 
 
 @router.post("/cleanup")
-async def cleanup_files():
+async def cleanup_files(current_user: User = Depends(get_current_user)):
     """
     Limpiar archivos inactivos del sistema
     (Solo para administradores)
     """
     try:
-        # TODO: Agregar verificación de permisos de administrador
+        # Verificar que el usuario tiene permisos de administrador
+        if not current_user.role or current_user.role.get("name") != "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Only administrators can perform cleanup operations"
+            )
         
         deleted_count = await file_use_cases.file_repository.cleanup_inactive_files()
         

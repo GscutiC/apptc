@@ -15,13 +15,20 @@ from ..dto.file_dto import (
 )
 from ...domain.entities.file_entity import File
 from ...domain.repositories.file_repository import FileRepository
+from ...infrastructure.config.settings import Settings
 
 
 class FileUseCases:
     """Casos de uso para manejo de archivos"""
     
-    def __init__(self, file_repository: FileRepository, upload_dir: str = "uploads"):
+    def __init__(
+        self, 
+        file_repository: FileRepository, 
+        settings: Settings,
+        upload_dir: str = "uploads"
+    ):
         self.file_repository = file_repository
+        self.settings = settings
         self.upload_dir = Path(upload_dir)
         self.upload_dir.mkdir(exist_ok=True)
         
@@ -225,9 +232,9 @@ class FileUseCases:
         return category_dirs.get(category, 'temp')
     
     def _generate_public_url(self, file_id: str) -> str:
-        """Generar URL pública para el archivo"""
-        # En desarrollo, asumir localhost:8000
-        return f"http://localhost:8000/api/files/{file_id}"
+        """Generar URL pública para el archivo usando configuración centralizada"""
+        base_url = self.settings.base_url.rstrip('/')
+        return f"{base_url}/api/files/{file_id}"
     
     def _extract_metadata(self, content: bytes, mime_type: str) -> dict:
         """Extraer metadatos del archivo"""
