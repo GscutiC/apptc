@@ -18,6 +18,7 @@ from ...utils.logger import get_logger
 logger = get_logger(__name__)
 
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)  # ✅ No lanza error si falta el token
 
 # Configuración JWT (debe coincidir con Clerk)
 CLERK_ISSUER = "https://primary-bat-80.clerk.accounts.dev"
@@ -31,7 +32,7 @@ def get_user_repository() -> MongoUserRepository:
 
 
 async def get_current_user_optional(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_optional),
     user_repo: UserRepository = Depends(get_user_repository)
 ) -> Optional[User]:
     """

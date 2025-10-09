@@ -560,12 +560,26 @@ class InterfaceConfigUseCases:
         if updates.logos:
             current_logos = config.logos.to_dict()
             
+            # Helper para hacer merge inteligente que elimina valores None
+            def merge_with_none_deletion(target_dict: dict, updates_dict: dict) -> None:
+                """
+                Merge que elimina claves cuando el valor es None (undefined en JS)
+                Esto permite eliminar logos correctamente desde el frontend.
+                """
+                for key, value in updates_dict.items():
+                    if value is None:
+                        # Si el valor es None, eliminarlo del diccionario
+                        target_dict.pop(key, None)
+                    else:
+                        # Si el valor no es None, actualizarlo
+                        target_dict[key] = value
+            
             if updates.logos.mainLogo is not None:
-                current_logos['mainLogo'].update(updates.logos.mainLogo)
+                merge_with_none_deletion(current_logos['mainLogo'], updates.logos.mainLogo)
             if updates.logos.favicon is not None:
-                current_logos['favicon'].update(updates.logos.favicon)
+                merge_with_none_deletion(current_logos['favicon'], updates.logos.favicon)
             if updates.logos.sidebarLogo is not None:
-                current_logos['sidebarLogo'].update(updates.logos.sidebarLogo)
+                merge_with_none_deletion(current_logos['sidebarLogo'], updates.logos.sidebarLogo)
             
             logos = LogoConfig(
                 main_logo=current_logos['mainLogo'],

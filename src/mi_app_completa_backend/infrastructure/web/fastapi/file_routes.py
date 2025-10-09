@@ -34,14 +34,17 @@ async def upload_file(
     file: UploadFile = File(...),
     category: str = Query(default="image", description="File category: logo, favicon, image, document"),
     description: Optional[str] = Query(default=None, description="File description"),
-    current_user: Optional[User] = Depends(get_current_user_optional)
+    current_user: User = Depends(get_current_user)  # ✅ Autenticación OBLIGATORIA
 ):
     """
     Subir un archivo al servidor
+    🔐 REQUIERE AUTENTICACIÓN
     
     - **file**: Archivo a subir
     - **category**: Categoría del archivo (logo, favicon, image, document)
     - **description**: Descripción opcional del archivo
+    
+    El archivo será asociado automáticamente al usuario autenticado.
     """
     try:
         # Leer contenido del archivo
@@ -54,8 +57,8 @@ async def upload_file(
             if not mime_type:
                 mime_type = 'application/octet-stream'
         
-        # Obtener created_by del usuario autenticado (si existe)
-        created_by = current_user.clerk_id if current_user else None
+        # ✅ Siempre usar el usuario autenticado
+        created_by = current_user.clerk_id
         
         # Subir archivo usando casos de uso
         result = await file_use_cases.upload_file(
@@ -75,13 +78,27 @@ async def upload_file(
 
 
 @router.get("/{file_id}")
-async def get_file(file_id: str):
+async def get_file(
+    file_id: str,
+    current_user: Optional[User] = Depends(get_current_user_optional)  # ⚠️ Autenticación opcional
+):
     """
     Servir archivo por ID
     
+    ⚠️ Autenticación OPCIONAL: 
+    - Este endpoint permite acceso sin autenticación para servir logos públicos en la interfaz
+    - Si necesitas restringir el acceso, cambia a: current_user: User = Depends(get_current_user)
+    
     - **file_id**: ID único del archivo
+    
+    SEGURIDAD: Los archivos son públicos solo si conoces el file_id (UUID).
+    Para archivos privados/sensibles, implementar validación de permisos aquí.
     """
     try:
+        # TODO: Si el archivo es privado, verificar que current_user tiene permisos
+        # if file_is_private and not current_user:
+        #     raise HTTPException(status_code=401, detail="Authentication required")
+        
         file_data = await file_use_cases.get_file_content(file_id)
         
         if not file_data:
@@ -105,13 +122,20 @@ async def get_file(file_id: str):
 
 
 @router.get("/{file_id}/info", response_model=FileResponseDTO)
-async def get_file_info(file_id: str):
+async def get_file_info(
+    file_id: str,
+    current_user: User = Depends(get_current_user)  # ✅ Autenticación OBLIGATORIA
+):
     """
     Obtener información de un archivo sin descargarlo
+    🔐 REQUIERE AUTENTICACIÓN
     
     - **file_id**: ID único del archivo
+    
+    Solo usuarios autenticados pueden ver metadatos de archivos.
     """
     try:
+        # TODO: Verificar permisos - el usuario puede ver este archivo?
         file_info = await file_use_cases.get_file(file_id)
         
         if not file_info:
@@ -126,13 +150,23 @@ async def get_file_info(file_id: str):
 
 
 @router.delete("/{file_id}")
-async def delete_file(file_id: str):
+async def delete_file(
+    file_id: str,
+    current_user: User = Depends(get_current_user)  # ✅ Autenticación OBLIGATORIA
+):
     """
     Eliminar un archivo
+    🔐 REQUIERE AUTENTICACIÓN
     
     - **file_id**: ID único del archivo
+    
+    Solo usuarios autenticados pueden eliminar archivos.
+    Los administradores pueden eliminar cualquier archivo.
+    Los usuarios regulares solo pueden eliminar sus propios archivos.
     """
     try:
+        # TODO: Implementar verificación de permisos (el usuario puede eliminar su archivo o es admin)
+        # Por ahora, cualquier usuario autenticado puede eliminar
         success = await file_use_cases.delete_file(file_id)
         
         if not success:
@@ -147,14 +181,22 @@ async def delete_file(file_id: str):
 
 
 @router.patch("/{file_id}", response_model=FileResponseDTO)
-async def update_file_metadata(file_id: str, update_data: FileUpdateDTO):
+async def update_file_metadata(
+    file_id: str, 
+    update_data: FileUpdateDTO,
+    current_user: User = Depends(get_current_user)  # ✅ Autenticación OBLIGATORIA
+):
     """
     Actualizar metadatos de un archivo
+    🔐 REQUIERE AUTENTICACIÓN
     
     - **file_id**: ID único del archivo
     - **update_data**: Datos a actualizar
+    
+    Solo usuarios autenticados pueden actualizar metadatos de archivos.
     """
     try:
+        # TODO: Verificar que el usuario es dueño del archivo o es admin
         updated_file = await file_use_cases.update_file(file_id, update_data)
         
         if not updated_file:
@@ -172,16 +214,23 @@ async def update_file_metadata(file_id: str, update_data: FileUpdateDTO):
 async def list_files(
     category: Optional[str] = Query(default=None, description="Filter by category"),
     page: int = Query(default=1, ge=1, description="Page number"),
-    page_size: int = Query(default=20, ge=1, le=100, description="Items per page")
+    page_size: int = Query(default=20, ge=1, le=100, description="Items per page"),
+    current_user: User = Depends(get_current_user)  # ✅ Autenticación OBLIGATORIA
 ):
     """
     Listar archivos con filtros y paginación
+    🔐 REQUIERE AUTENTICACIÓN
     
     - **category**: Filtrar por categoría (opcional)
     - **page**: Número de página
     - **page_size**: Elementos por página (máximo 100)
+    
+    Solo usuarios autenticados pueden listar archivos del sistema.
     """
     try:
+        # TODO: Filtrar archivos según permisos del usuario
+        # - Admin: Ver todos los archivos
+        # - Usuario regular: Ver solo sus archivos
         files_list = await file_use_cases.list_files(
             category=category,
             page=page,
