@@ -237,7 +237,7 @@ async def update_user_role(
     return await user_repo.get_user_with_role(clerk_id)
 
 # Endpoints de roles
-@router.get("/roles", response_model=List[Role])
+@router.get("/roles", response_model=List[RoleResponseDTO])
 async def list_roles(
     current_user: UserWithRole = Depends(get_current_user),
     role_repo: RoleRepository = Depends(get_role_repository)
@@ -251,7 +251,26 @@ async def list_roles(
             detail="Insufficient permissions to access roles"
         )
     
-    return await role_repo.list_roles()
+    # Obtener roles desde el repositorio
+    roles = await role_repo.list_roles()
+    
+    # Convertir a DTOs (mismo patrón que /roles/detailed)
+    role_dtos = []
+    for role in roles:
+        role_dto = RoleResponseDTO(
+            id=str(role.id),
+            name=role.name,
+            display_name=role.display_name,
+            description=role.description,
+            permissions=role.permissions,
+            is_active=role.is_active,
+            is_system_role=role.is_system_role,
+            created_at=role.created_at,
+            updated_at=role.updated_at
+        )
+        role_dtos.append(role_dto)
+    
+    return role_dtos
 
 @router.post("/roles", response_model=Role)
 # @requires_permission("roles.create")

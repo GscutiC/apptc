@@ -34,7 +34,8 @@ class Role(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
         arbitrary_types_allowed=True,
-        json_encoders={ObjectId: str}
+        json_encoders={ObjectId: str},
+        by_alias=False  # ← Esto hace que use el nombre del campo, no el alias
     )
     
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
@@ -161,7 +162,8 @@ class User(BaseModel):
         populate_by_name=True,
         arbitrary_types_allowed=True,
         json_encoders={ObjectId: str},
-        extra='allow'  # Permitir campos adicionales como 'role'
+        extra='allow',  # Permitir campos adicionales como 'role'
+        by_alias=False  # ← Usar nombre del campo, no alias
     )
 
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")

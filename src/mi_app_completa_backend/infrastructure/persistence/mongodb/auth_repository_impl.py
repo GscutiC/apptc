@@ -183,12 +183,19 @@ class MongoRoleRepository(RoleRepository):
         result = await self.collection.insert_one(role_dict)
         role_dict["_id"] = result.inserted_id
         
+        # Convertir _id a id para compatibilidad con Pydantic
+        if "_id" in role_dict:
+            role_dict["id"] = role_dict.pop("_id")
+        
         return Role(**role_dict)
     
     async def get_role_by_name(self, name: str) -> Optional[Role]:
         """Obtener rol por nombre"""
         role_doc = await self.collection.find_one({"name": name, "is_active": True})
         if role_doc:
+            # Convertir _id a id para compatibilidad con Pydantic
+            if "_id" in role_doc:
+                role_doc["id"] = role_doc.pop("_id")
             return Role(**role_doc)
         return None
     
@@ -197,6 +204,9 @@ class MongoRoleRepository(RoleRepository):
         try:
             role_doc = await self.collection.find_one({"_id": ObjectId(role_id), "is_active": True})
             if role_doc:
+                # Convertir _id a id para compatibilidad con Pydantic
+                if "_id" in role_doc:
+                    role_doc["id"] = role_doc.pop("_id")
                 return Role(**role_doc)
         except Exception:
             pass
@@ -207,6 +217,9 @@ class MongoRoleRepository(RoleRepository):
         cursor = self.collection.find({"is_active": True}).sort("display_name", 1)
         roles = []
         async for role_doc in cursor:
+            # Convertir _id a id para compatibilidad con Pydantic
+            if "_id" in role_doc:
+                role_doc["id"] = role_doc.pop("_id")
             roles.append(Role(**role_doc))
         return roles
     

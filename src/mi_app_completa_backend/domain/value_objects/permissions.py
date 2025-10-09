@@ -13,6 +13,7 @@ class PermissionCategory(Enum):
     AI = "ai"
     ADMIN = "admin"
     AUDIT = "audit"
+    MODULES = "modules"
 
 class PermissionAction(Enum):
     """Acciones disponibles para permisos"""
@@ -25,6 +26,7 @@ class PermissionAction(Enum):
     PROCESS = "process"
     VIEW_LOGS = "view_logs"
     MANAGE_SETTINGS = "manage_settings"
+    TECHO_PROPIO = "techo_propio"
 
 @dataclass
 class Permission:
@@ -77,6 +79,9 @@ class SystemPermissions:
     
     # Permisos de administración
     ADMIN_MANAGE_SETTINGS = Permission(PermissionCategory.ADMIN, PermissionAction.MANAGE_SETTINGS, "Gestionar configuración del sistema")
+    
+    # Permisos de módulos
+    MODULES_TECHO_PROPIO = Permission(PermissionCategory.MODULES, PermissionAction.TECHO_PROPIO, "Acceso al módulo Techo Propio")
     
     @classmethod
     def get_all_permissions(cls) -> List[Permission]:
@@ -152,6 +157,7 @@ class DefaultRoles:
         SystemPermissions.ROLES_DELETE,
         SystemPermissions.ROLES_ASSIGN,
         SystemPermissions.ADMIN_MANAGE_SETTINGS,
+        SystemPermissions.MODULES_TECHO_PROPIO,
     ]
     
     ROLES_CONFIG = {

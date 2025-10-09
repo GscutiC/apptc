@@ -66,9 +66,39 @@ class UpdateRoleUseCase:
         if not existing_role:
             raise RoleNotFoundError(role_id)
         
-        # No permitir editar roles del sistema
+        # Validación especial para roles del sistema
         if existing_role.is_system_role:
-            raise InvalidRoleError(f"System role '{existing_role.name}' cannot be modified")
+            # Para roles de sistema, solo permitir agregar permisos de módulos
+            if role_data.permissions is not None:
+                # Verificar que solo se están agregando permisos de módulos
+                existing_permissions = set(existing_role.permissions)
+                new_permissions = set(role_data.permissions)
+                
+                # Permisos que se están quitando
+                removed_permissions = existing_permissions - new_permissions
+                if removed_permissions:
+                    raise InvalidRoleError(f"System role '{existing_role.name}' cannot have permissions removed. Attempted to remove: {list(removed_permissions)}")
+                
+                # Permisos que se están agregando
+                added_permissions = new_permissions - existing_permissions
+                
+                # Solo permitir agregar permisos de módulos (que empiecen con 'modules.')
+                invalid_additions = [p for p in added_permissions if not p.startswith('modules.')]
+                if invalid_additions:
+                    raise InvalidRoleError(f"System role '{existing_role.name}' can only have module permissions added. Invalid additions: {invalid_additions}")
+            
+            # Para roles de sistema, no permitir cambiar nombre, descripción, etc.
+            # Solo rechazar si realmente se están cambiando los valores
+            changes_detected = []
+            if role_data.display_name is not None and role_data.display_name != existing_role.display_name:
+                changes_detected.append(f"display_name: '{existing_role.display_name}' -> '{role_data.display_name}'")
+            if role_data.description is not None and role_data.description != existing_role.description:
+                changes_detected.append(f"description: '{existing_role.description}' -> '{role_data.description}'") 
+            if role_data.is_active is not None and role_data.is_active != existing_role.is_active:
+                changes_detected.append(f"is_active: {existing_role.is_active} -> {role_data.is_active}")
+            
+            if changes_detected:
+                raise InvalidRoleError(f"System role '{existing_role.name}' properties cannot be modified. Attempted changes: {changes_detected}. Only module permissions can be added.")
         
         # Validar permisos si se proporcionan
         if role_data.permissions is not None:
@@ -198,7 +228,7 @@ class ListRolesWithStatsUseCase:
                 permissions=role.permissions,
                 is_active=role.is_active,
                 is_system_role=role.is_system_role,
-                created_at=role.created_at,
+                created_at=role.updated_at,
                 updated_at=role.updated_at,
                 user_count=user_count,
                 permission_count=len(role.permissions)

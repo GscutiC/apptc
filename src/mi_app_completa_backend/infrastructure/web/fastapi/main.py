@@ -63,6 +63,10 @@ app.include_router(file_router)
 # Incluir rutas de APIs gubernamentales (RENIEC, SUNAT, etc.)
 app.include_router(government_router)
 
+# Incluir rutas de Techo Propio
+from .routes.techo_propio_routes import router as techo_propio_router
+app.include_router(techo_propio_router)
+
 # Configuración de dependencias
 from ....infrastructure.config.database import get_database
 
