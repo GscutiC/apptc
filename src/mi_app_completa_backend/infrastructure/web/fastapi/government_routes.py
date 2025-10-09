@@ -21,6 +21,9 @@ from ....infrastructure.services.government_apis import (
     APIUnavailableException,
     GovernmentAPIException
 )
+from ....domain.entities.auth_models import User
+from .auth_dependencies import get_current_user_optional, get_current_user
+from ....domain.value_objects.auth_decorators import requires_active_user
 
 logger = logging.getLogger(__name__)
 
@@ -53,17 +56,19 @@ def get_government_use_case() -> GovernmentQueriesUseCase:
 @router.get(
     "/dni/{dni}",
     summary="Consultar DNI en RENIEC",
-    description="Consulta información de una persona por su número de DNI",
+    description="Consulta información de una persona por su número de DNI. Requiere autenticación.",
     response_description="Datos de la persona consultada"
 )
 async def query_dni(
     dni: str,
     use_cache: bool = Query(default=True, description="Usar caché si está disponible"),
     use_case: GovernmentQueriesUseCase = Depends(get_government_use_case),
-    # current_user = Depends(get_current_user)  # TODO: Descomentar cuando auth esté listo
+    current_user: User = Depends(get_current_user)  # ✅ Autenticación requerida
 ):
     """
     Consultar información de persona por DNI
+    
+    **Requiere autenticación**: Sí
     
     - **dni**: DNI de 8 dígitos numéricos
     - **use_cache**: Si usar caché (default: true)
@@ -72,14 +77,11 @@ async def query_dni(
         Información completa de la persona si se encuentra
     """
     try:
-        logger.info(f"📡 [API] Recibida consulta DNI: {dni}")
-        
-        # TODO: Obtener user_id del current_user cuando auth esté listo
-        user_id = None  # current_user.id if current_user else None
+        logger.info(f"📡 [API] Usuario {current_user.email} consultando DNI: {dni}")
         
         result = await use_case.query_dni(
             dni=dni,
-            user_id=user_id,
+            user_id=current_user.clerk_id,
             use_cache=use_cache
         )
         
@@ -116,17 +118,19 @@ async def query_dni(
 @router.get(
     "/ruc/{ruc}",
     summary="Consultar RUC en SUNAT",
-    description="Consulta información de una empresa por su número de RUC",
+    description="Consulta información de una empresa por su número de RUC. Requiere autenticación.",
     response_description="Datos de la empresa consultada"
 )
 async def query_ruc(
     ruc: str,
     use_cache: bool = Query(default=True, description="Usar caché si está disponible"),
     use_case: GovernmentQueriesUseCase = Depends(get_government_use_case),
-    # current_user = Depends(get_current_user)  # TODO: Descomentar cuando auth esté listo
+    current_user: User = Depends(get_current_user)  # ✅ Autenticación requerida
 ):
     """
     Consultar información de empresa por RUC
+    
+    **Requiere autenticación**: Sí
     
     - **ruc**: RUC de 11 dígitos numéricos
     - **use_cache**: Si usar caché (default: true)
@@ -135,14 +139,11 @@ async def query_ruc(
         Información completa de la empresa si se encuentra
     """
     try:
-        logger.info(f"📡 [API] Recibida consulta RUC: {ruc}")
-        
-        # TODO: Obtener user_id del current_user cuando auth esté listo
-        user_id = None  # current_user.id if current_user else None
+        logger.info(f"📡 [API] Usuario {current_user.email} consultando RUC: {ruc}")
         
         result = await use_case.query_ruc(
             ruc=ruc,
-            user_id=user_id,
+            user_id=current_user.clerk_id,
             use_cache=use_cache
         )
         

@@ -10,15 +10,19 @@
 - **JWT tokens** para manejo seguro de sesiones
 - **Middleware de seguridad** personalizado
 
-### 🏛️ **APIs Gubernamentales Peruanas** (Nuevo Módulo Modular)
+### 🏛️ **APIs Gubernamentales Peruanas** (Módulo Modular Completo)
 - **RENIEC**: Consulta de ciudadanos por DNI con validación robusta
 - **SUNAT**: Consulta de empresas por RUC con múltiples endpoints
 - **Arquitectura modular**: Fácil agregar nuevas APIs (SUNARP, Migraciones, etc.)
-- **Factory Pattern**: Gestión centralizada de servicios
-- **Fallback automático**: Múltiples proveedores con respaldo
-- **Preparado para caché**: Optimización de consultas frecuentes
-- **Sistema de auditoría**: Trazabilidad completa de consultas
-- **Validación robusta**: Documentos validados antes de consultar
+- **Factory Pattern**: Gestión centralizada con registro dinámico de servicios
+- **Fallback automático**: Múltiples proveedores con respaldo transparente
+- **Caché inteligente**: Preparado para Redis con TTL configurable
+- **Sistema de auditoría**: Trazabilidad completa de todas las consultas
+- **Validación robusta**: Documentos validados antes de consultar (ahorra APIs calls)
+- **Helper Service**: Interfaz simplificada para uso rápido desde cualquier módulo
+- **Integración Frontend**: Documentación completa con TypeScript, hooks y componentes React
+- **Quick Functions**: Funciones de una línea para casos de uso simples
+- **Batch Queries**: Consultas masivas con manejo automático de errores
 
 ### 📁 **Gestión Avanzada de Archivos**
 - **Subida y almacenamiento** de archivos (logos, imágenes, documentos)
@@ -54,21 +58,30 @@
 src/mi_app_completa_backend/
 ├── domain/                 # 🎯 Lógica de negocio pura
 │   ├── entities/          # User, File, AuditLog, Role, GovernmentAPIs
+│   │   └── government_apis/  # 🏛️ Entidades de APIs Gubernamentales
+│   │       ├── base_entity.py        # BaseResponse, DocumentType, APIProvider
+│   │       ├── reniec_entity.py      # DniData, DniConsultaResponse
+│   │       └── sunat_entity.py       # RucData, RucConsultaResponse
 │   ├── repositories/      # Interfaces abstractas
 │   ├── services/          # Servicios de dominio
 │   └── value_objects/     # Permisos, roles, excepciones
 ├── application/           # 📋 Casos de uso
 │   ├── use_cases/        # Lógica de aplicación específica
+│   │   └── government_queries.py  # GovernmentQueriesUseCase (orquestador)
 │   └── dto/              # Data Transfer Objects
+│       └── government_dto.py  # DTOs para requests/responses
 └── infrastructure/       # 🔧 Adaptadores externos
     ├── persistence/      # Implementaciones MongoDB
     ├── web/             # APIs REST con FastAPI
+    │   └── fastapi/
+    │       └── government_routes.py  # Endpoints REST con auth
     ├── services/        # Servicios externos modulares
-    │   └── government_apis/  # 🏛️ Módulo APIs Gubernamentales
-    │       ├── base_government_api.py
-    │       ├── reniec_service.py
-    │       ├── sunat_service.py
-    │       └── government_factory.py
+    │   ├── government_apis/  # 🏛️ Módulo APIs Gubernamentales
+    │   │   ├── base_government_api.py   # Abstract base class
+    │   │   ├── reniec_service.py        # Implementación RENIEC
+    │   │   ├── sunat_service.py         # Implementación SUNAT
+    │   │   └── government_factory.py    # Factory para servicios
+    │   └── government_helper.py  # 🚀 Helper service (uso simplificado)
     └── config/          # Configuración del sistema
 ```
 
@@ -148,6 +161,32 @@ python start_server.py --env development
 python -m uvicorn src.mi_app_completa_backend.infrastructure.web.fastapi.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+### **Uso Rápido del Módulo Gubernamental** 🏛️
+
+```python
+# Desde cualquier parte del backend
+from infrastructure.services.government_helper import quick_query_dni, quick_query_ruc
+
+# Consultar DNI en una línea
+persona = await quick_query_dni("12345678")
+if persona:
+    print(f"Nombre: {persona.nombre_completo}")
+
+# Consultar RUC en una línea
+empresa = await quick_query_ruc("20123456789")
+if empresa:
+    print(f"Empresa: {empresa.razon_social}, Estado: {empresa.estado}")
+```
+
+**Más formas de uso:**
+- **Helper Service**: Interfaz completa con métodos como `get_persona_by_dni()`, `validate_dni()`, batch queries
+- **Use Cases**: Integración en flujos complejos con cache y auditoría
+- **Factory Pattern**: Acceso directo a servicios específicos
+- **API REST**: Endpoints protegidos para frontend
+
+👉 **Ver ejemplos completos**: `examples/government_apis_usage.py` (12 casos de uso)
+👉 **Guía rápida**: `docs/QUICK_START_GOVERNMENT_APIS.md`
+
 ### **Producción con Docker**
 ```bash
 # Construir imagen
@@ -187,11 +226,19 @@ pytest tests/integration/
 - `POST /api/auth/refresh` - Renovar token
 - `GET /api/auth/profile` - Perfil de usuario
 
-### **Consultas Gubernamentales**
+### **Consultas Gubernamentales** 🏛️ (Requiere Autenticación)
 - `GET /api/government/dni/{dni}` - Consultar persona por DNI (RENIEC)
+  - Respuesta: `{ success, data: { dni, nombre_completo, ... }, fuente, cache_hit }`
 - `GET /api/government/ruc/{ruc}` - Consultar empresa por RUC (SUNAT)
+  - Respuesta: `{ success, data: { ruc, razon_social, estado, ... }, fuente }`
 - `GET /api/government/providers` - Listar proveedores de APIs disponibles
 - `GET /api/government/health` - Estado de salud de servicios
+
+**Documentación Detallada:**
+- **Guía Rápida**: `docs/QUICK_START_GOVERNMENT_APIS.md` ⭐ EMPIEZA AQUÍ
+- **Módulo Completo**: `docs/GOVERNMENT_APIS_MODULE.md`
+- **Frontend**: `docs/FRONTEND_INTEGRATION.md`
+- **Ejemplos Python**: `examples/government_apis_usage.py`
 
 ### **Gestión de Archivos**
 - `POST /api/files/upload` - Subir archivo
@@ -217,9 +264,9 @@ JWT_SECRET_KEY=tu_jwt_secret_super_seguro
 JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=1440
 
-# APIs Externas
-RENIEC_API_KEY=tu_api_key_reniec
-SUNAT_API_KEY=tu_api_key_sunat
+# APIs Gubernamentales (Opcional - usan endpoints públicos por defecto)
+RENIEC_API_KEY=tu_api_key_reniec  # Opcional
+SUNAT_API_KEY=tu_api_key_sunat    # Opcional
 
 # Aplicación
 ENVIRONMENT=development
@@ -251,7 +298,17 @@ Este proyecto está bajo la Licencia MIT. Ver `LICENSE` para más detalles.
 
 ## 🆘 Soporte
 
-- **Documentación**: `/docs` (Swagger UI automático)
+### **Documentación del Proyecto**
+- **Swagger UI**: `http://localhost:8000/docs` - Documentación interactiva de API
+- **ReDoc**: `http://localhost:8000/redoc` - Documentación alternativa
+
+### **Módulo APIs Gubernamentales** 🏛️
+- **🚀 EMPIEZA AQUÍ**: `docs/QUICK_START_GOVERNMENT_APIS.md` - Guía rápida
+- **📖 Documentación Técnica**: `docs/GOVERNMENT_APIS_MODULE.md`
+- **🌐 Integración Frontend**: `docs/FRONTEND_INTEGRATION.md`
+- **💻 Ejemplos Python**: `examples/government_apis_usage.py`
+
+### **Contacto**
 - **Issues**: Crear issue en el repositorio
 - **Email**: [tu-email@empresa.com]
 
