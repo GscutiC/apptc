@@ -660,3 +660,133 @@ class InterfaceConfigUseCases:
             changeDescription=history.change_description,
             createdAt=history.created_at
         )
+
+    async def create_default_config(self) -> InterfaceConfigResponseDTO:
+        """
+        🆕 Crear configuración por defecto basada en interface_config.json del backend
+        Se usa cuando no hay configuración en BD
+        """
+        import json
+        import os
+        from pathlib import Path
+        
+        try:
+            # Intentar cargar desde interface_config.json del root del proyecto
+            backend_config_path = Path(__file__).parent.parent.parent.parent.parent / "interface_config.json"
+            
+            if backend_config_path.exists():
+                with open(backend_config_path, 'r', encoding='utf-8') as f:
+                    config_data = json.load(f)
+                
+                # Convertir a entidad usando el formato del archivo
+                config = self._create_config_from_file_data(config_data)
+                
+                # Guardar en BD como activa
+                saved_config = await self.config_repo.save_config(config)
+                
+                return self._config_to_response_dto(saved_config)
+            
+        except Exception as e:
+            print(f"⚠️ Error cargando config desde archivo: {e}")
+        
+        # Fallback: crear configuración mínima hardcodeada
+        theme = ThemeConfig(
+            mode="light",
+            name="Configuración por Defecto",
+            colors=ColorConfig(
+                primary={"500": "#10b981", "600": "#059669", "700": "#047857"},
+                secondary={"500": "#6b7280", "600": "#4b5563", "700": "#374151"},
+                accent={"500": "#10b981", "600": "#059669", "700": "#047857"},
+                neutral={"500": "#6b7280", "600": "#4b5563", "700": "#374151"}
+            ),
+            typography=TypographyConfig(
+                font_family={"primary": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"},
+                font_size={"base": "1rem", "lg": "1.125rem"},
+                font_weight={"normal": 400, "medium": 500, "bold": 700}
+            ),
+            layout=LayoutConfig(
+                border_radius={"base": "0.25rem", "lg": "0.5rem"},
+                spacing={"base": "1rem"},
+                shadows={"base": "0 1px 3px 0 rgb(0 0 0 / 0.1)"}
+            )
+        )
+        
+        logos = LogoConfig(
+            main_logo={"text": "WorkTecApp", "showText": True, "showImage": False},
+            favicon={},
+            sidebar_logo={"text": "WorkTecApp", "showText": True, "showImage": False, "collapsedText": "WT"}
+        )
+        
+        branding = BrandingConfig(
+            app_name="WorkTecApp",
+            app_description="Soluciones empresariales sostenibles",
+            tagline="Soluciones empresariales sostenibles",
+            company_name="WorkTec Solutions",
+            welcome_message="Bienvenido a WorkTecApp"
+        )
+        
+        config = InterfaceConfig(
+            theme=theme,
+            logos=logos,
+            branding=branding,
+            is_active=True,
+            created_by="system"
+        )
+        
+        # Guardar en BD
+        saved_config = await self.config_repo.save_config(config)
+        
+        return self._config_to_response_dto(saved_config)
+
+    def _create_config_from_file_data(self, data: dict) -> InterfaceConfig:
+        """Crear configuración desde datos del archivo JSON"""
+        
+        # Usar la configuración anidada si existe
+        config_data = data.get('config', data)
+        theme_data = config_data.get('theme', data.get('theme', {}))
+        
+        theme = ThemeConfig(
+            mode=theme_data.get('mode', 'light'),
+            name=theme_data.get('name', 'Tema desde Archivo'),
+            colors=ColorConfig(
+                primary=theme_data.get('colors', {}).get('primary', {"500": "#10b981"}),
+                secondary=theme_data.get('colors', {}).get('secondary', {"500": "#6b7280"}),
+                accent=theme_data.get('colors', {}).get('accent', {"500": "#10b981"}),
+                neutral=theme_data.get('colors', {}).get('neutral', {"500": "#6b7280"})
+            ),
+            typography=TypographyConfig(
+                font_family=theme_data.get('typography', {}).get('fontFamily', {"primary": "system-ui"}),
+                font_size=theme_data.get('typography', {}).get('fontSize', {"base": "1rem"}),
+                font_weight=theme_data.get('typography', {}).get('fontWeight', {"normal": 400})
+            ),
+            layout=LayoutConfig(
+                border_radius=theme_data.get('layout', {}).get('borderRadius', {"base": "0.25rem"}),
+                spacing=theme_data.get('layout', {}).get('spacing', {"base": "1rem"}),
+                shadows=theme_data.get('layout', {}).get('shadows', {"base": "0 1px 3px rgba(0,0,0,0.1)"})
+            )
+        )
+        
+        logos_data = config_data.get('logos', data.get('logos', {}))
+        logos = LogoConfig(
+            main_logo=logos_data.get('mainLogo', {"text": "App", "showText": True, "showImage": False}),
+            favicon=logos_data.get('favicon', {}),
+            sidebar_logo=logos_data.get('sidebarLogo', {"text": "App", "showText": True, "showImage": False})
+        )
+        
+        branding_data = config_data.get('branding', data.get('branding', {}))
+        branding = BrandingConfig(
+            app_name=branding_data.get('appName', 'Aplicación'),
+            app_description=branding_data.get('appDescription', 'Sistema de gestión'),
+            tagline=branding_data.get('tagline', ''),
+            company_name=branding_data.get('companyName', ''),
+            welcome_message=branding_data.get('welcomeMessage', 'Bienvenido')
+        )
+        
+        return InterfaceConfig(
+            theme=theme,
+            logos=logos,
+            branding=branding,
+            custom_css=config_data.get('customCSS'),
+            is_active=True,
+            created_by="system-default"
+        )

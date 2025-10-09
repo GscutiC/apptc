@@ -15,6 +15,7 @@ from .auth_routes import router as auth_router
 from .interface_config_routes import router as interface_config_router
 from .contextual_config_routes import router as contextual_config_router
 from .file_routes import router as file_router
+from .government_routes import router as government_router
 from ....domain.entities.auth_models import User
 from ....domain.value_objects.auth_decorators import (
     requires_permission, requires_role, requires_active_user,
@@ -58,6 +59,9 @@ app.include_router(contextual_config_router)
 
 # Incluir rutas de archivos
 app.include_router(file_router)
+
+# Incluir rutas de APIs gubernamentales (RENIEC, SUNAT, etc.)
+app.include_router(government_router)
 
 # Configuración de dependencias
 from ....infrastructure.config.database import get_database

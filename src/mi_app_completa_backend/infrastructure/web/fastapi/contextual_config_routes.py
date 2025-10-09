@@ -5,6 +5,7 @@ FASE 3: Endpoints para configuración por usuario, rol, org y contexto
 
 from fastapi import APIRouter, HTTPException, Depends, status, Query
 from typing import Optional
+from datetime import datetime
 
 from ....domain.entities.auth_models import User
 from ....application.use_cases.contextual_config_use_cases import ContextualConfigUseCases
@@ -16,7 +17,8 @@ from ....application.dto.contextual_config_dto import (
     EffectiveConfigResponseDTO,
     ContextualConfigSearchDTO,
     ContextualConfigListDTO,
-    UserPreferencesDTO
+    UserPreferencesDTO,
+    ConfigContextDTO
 )
 from ....infrastructure.persistence.mongodb.contextual_config_repository_impl import MongoContextualConfigRepository
 from ....infrastructure.persistence.mongodb.interface_config_repository_impl import MongoInterfaceConfigRepository
@@ -40,24 +42,37 @@ async def get_effective_config(
     user_id: str,
     user_role: Optional[str] = Query(None, description="Rol del usuario"),
     org_id: Optional[str] = Query(None, description="ID de la organización"),
+    fallback_to_global: bool = Query(True, description="Si usar configuración global como fallback"),
     current_user: User = Depends(get_current_user),
     use_cases: ContextualConfigUseCases = Depends(get_contextual_config_use_cases)
 ):
     """
-    Obtener configuración efectiva para un usuario siguiendo la jerarquía de contextos
+    🆕 MEJORADO: Obtener configuración efectiva con fallback inteligente
     
-    Jerarquía: user > role > org > global
+    Jerarquía: user > role > org > global (si fallback_to_global=true)
     
     Requiere: Usuario autenticado (puede ver su propia config o admin puede ver cualquiera)
+    
+    Parámetros:
+    - fallback_to_global: Si es True, usa configuración global cuando no hay contextual
     """
     try:
         # Validar permisos: admin puede ver cualquier config, usuario solo la suya
         user_role_name = current_user.role.get("name") if current_user.role else current_user.role_name
-        if user_role_name not in ["admin", "super_admin"] and current_user.clerk_id != user_id:
+        is_admin = user_role_name in ["admin", "super_admin"]
+        
+        if not is_admin and current_user.clerk_id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Solo puedes acceder a tu propia configuración"
+                detail={
+                    "error": "permission_denied",
+                    "message": "Solo puedes acceder a tu propia configuración",
+                    "user_id": user_id,
+                    "current_user": current_user.clerk_id
+                }
             )
+
+        logger.info(f"🔍 Buscando configuración efectiva para usuario {user_id}")
 
         request = EffectiveConfigRequestDTO(
             user_id=user_id,
@@ -65,21 +80,234 @@ async def get_effective_config(
             org_id=org_id
         )
 
+        # Intentar obtener configuración contextual
         effective_config = await use_cases.get_effective_config(request)
         
-        if not effective_config:
-            raise HTTPException(
-                status_code=404,
-                detail="No se encontró configuración efectiva para el usuario"
-            )
+        if effective_config:
+            logger.info(f"✅ Configuración contextual encontrada para {user_id}, fuente: {effective_config.resolved_from.context_type}")
+            return effective_config
 
-        return effective_config
+        # 🆕 FALLBACK INTELIGENTE: Si no hay configuración contextual y se permite fallback
+        if fallback_to_global:
+            logger.info(f"🔄 No hay configuración contextual, intentando fallback a configuración global")
+            
+            try:
+                # Importar dependencias necesarias para obtener configuración global
+                from ....application.use_cases.interface_config_use_cases import InterfaceConfigUseCases
+                from ....infrastructure.persistence.mongodb.interface_config_repository_impl import MongoInterfaceConfigRepository
+                from ....infrastructure.persistence.mongodb.preset_config_repository_impl import MongoPresetConfigRepository
+                from ....infrastructure.persistence.mongodb.config_history_repository_impl import MongoConfigHistoryRepository
+                from ....infrastructure.config.database import get_database
+                
+                # Obtener configuración global
+                db = get_database()
+                config_repo = MongoInterfaceConfigRepository(db)
+                preset_repo = MongoPresetConfigRepository(db)
+                history_repo = MongoConfigHistoryRepository(db)
+                global_use_cases = InterfaceConfigUseCases(config_repo, preset_repo, history_repo)
+                
+                global_config = await global_use_cases.get_current_config()
+                
+                if global_config:
+                    logger.info(f"✅ Usando configuración global como fallback para {user_id}")
+                    
+                    # Crear respuesta en formato contextual usando estructura correcta
+                    fallback_response = EffectiveConfigResponseDTO(
+                        config=global_config,
+                        resolved_from=ConfigContextDTO(
+                            context_type="global",
+                            context_id=None
+                        ),
+                        resolution_chain=[
+                            ConfigContextDTO(context_type="global", context_id=None)
+                        ]
+                    )
+                    
+                    return fallback_response
+                
+            except Exception as fallback_error:
+                logger.error(f"❌ Error en fallback a configuración global: {fallback_error}")
+        
+        # Si llegamos aquí, no hay configuración disponible
+        logger.warn(f"⚠️ No se encontró configuración para usuario {user_id}")
+        
+        error_detail = {
+            "error": "no_configuration_found",
+            "message": "No se encontró configuración efectiva para el usuario",
+            "user_id": user_id,
+            "searched_contexts": ["user", "role", "organization", "global"] if fallback_to_global else ["user", "role", "organization"],
+            "suggestions": [
+                "El usuario puede no tener configuración personalizada",
+                "Verifica que exista una configuración global en el sistema",
+                "Los administradores pueden crear configuración específica para este usuario"
+            ]
+        }
+        
+        raise HTTPException(status_code=404, detail=error_detail)
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting effective config for user {user_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"❌ Error inesperado obteniendo configuración efectiva para {user_id}: {e}")
+        
+        error_detail = {
+            "error": "internal_server_error",
+            "message": "Error interno del servidor",
+            "user_id": user_id,
+            "error_details": str(e) if is_admin else "Contacta al administrador",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        raise HTTPException(status_code=500, detail=error_detail)
+
+@router.get("/diagnostics/{user_id}")
+async def get_config_diagnostics(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    use_cases: ContextualConfigUseCases = Depends(get_contextual_config_use_cases)
+):
+    """
+    🆕 NUEVO: Endpoint de diagnóstico para configuraciones contextuales
+    
+    Proporciona información detallada sobre qué configuraciones están disponibles
+    para un usuario y por qué se selecciona una configuración específica.
+    
+    Útil para debugging y troubleshooting de problemas de configuración.
+    """
+    try:
+        # Validar permisos
+        user_role_name = current_user.role.get("name") if current_user.role else current_user.role_name
+        is_admin = user_role_name in ["admin", "super_admin"]
+        
+        if not is_admin and current_user.clerk_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Solo puedes diagnosticar tu propia configuración"
+            )
+
+        logger.info(f"🔍 Ejecutando diagnóstico para usuario {user_id}")
+
+        # Información del diagnóstico
+        diagnostics = {
+            "user_id": user_id,
+            "timestamp": datetime.utcnow().isoformat(),
+            "requester": {
+                "user_id": current_user.clerk_id,
+                "role": user_role_name,
+                "is_admin": is_admin
+            },
+            "configuration_sources": {
+                "user_specific": None,
+                "role_based": None,
+                "organization": None,
+                "global": None
+            },
+            "resolution_result": None,
+            "recommendations": []
+        }
+
+        # Intentar cada fuente de configuración
+        try:
+            # TODO: Implementar verificación de configuración específica de usuario
+            diagnostics["configuration_sources"]["user_specific"] = {
+                "status": "not_implemented",
+                "message": "Verificación de configuración específica de usuario no implementada"
+            }
+        except Exception as e:
+            diagnostics["configuration_sources"]["user_specific"] = {
+                "status": "error",
+                "error": str(e)
+            }
+
+        # Verificar configuración global
+        try:
+            from ....application.use_cases.interface_config_use_cases import InterfaceConfigUseCases
+            from ....infrastructure.persistence.mongodb.interface_config_repository_impl import MongoInterfaceConfigRepository
+            from ....infrastructure.persistence.mongodb.preset_config_repository_impl import MongoPresetConfigRepository
+            from ....infrastructure.persistence.mongodb.config_history_repository_impl import MongoConfigHistoryRepository
+            from ....infrastructure.config.database import get_database
+            
+            db = get_database()
+            config_repo = MongoInterfaceConfigRepository(db)
+            preset_repo = MongoPresetConfigRepository(db)
+            history_repo = MongoConfigHistoryRepository(db)
+            global_use_cases = InterfaceConfigUseCases(config_repo, preset_repo, history_repo)
+            
+            global_config = await global_use_cases.get_current_config()
+            
+            if global_config:
+                diagnostics["configuration_sources"]["global"] = {
+                    "status": "available",
+                    "config_id": global_config.id,
+                    "theme_name": global_config.theme.get("name") if global_config.theme else "Sin nombre",
+                    "app_name": global_config.branding.get("appName") if global_config.branding else "Sin nombre"
+                }
+            else:
+                diagnostics["configuration_sources"]["global"] = {
+                    "status": "not_found",
+                    "message": "No hay configuración global activa"
+                }
+                diagnostics["recommendations"].append(
+                    "Crear una configuración global usando el panel de administración"
+                )
+                
+        except Exception as e:
+            diagnostics["configuration_sources"]["global"] = {
+                "status": "error",
+                "error": str(e),
+                "message": "Error accediendo a configuración global"
+            }
+            diagnostics["recommendations"].append(
+                "Verificar conexión a MongoDB y configuración del backend"
+            )
+
+        # Intentar resolución final
+        try:
+            request = EffectiveConfigRequestDTO(user_id=user_id)
+            effective_config = await use_cases.get_effective_config(request)
+            
+            if effective_config:
+                diagnostics["resolution_result"] = {
+                    "status": "success",
+                    "source": effective_config.context.source,
+                    "config_available": True
+                }
+            else:
+                diagnostics["resolution_result"] = {
+                    "status": "no_config_found",
+                    "source": None,
+                    "config_available": False
+                }
+                
+        except Exception as e:
+            diagnostics["resolution_result"] = {
+                "status": "resolution_error",
+                "error": str(e),
+                "config_available": False
+            }
+
+        # Generar recomendaciones adicionales
+        if not diagnostics["resolution_result"]["config_available"]:
+            diagnostics["recommendations"].extend([
+                "El usuario usará configuración por defecto del frontend",
+                "Considera crear configuración global o específica para este usuario",
+                "Verifica logs del backend para errores detallados"
+            ])
+
+        return diagnostics
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error en diagnóstico para {user_id}: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail={
+                "error": "diagnostics_error",
+                "message": "Error ejecutando diagnóstico",
+                "details": str(e) if is_admin else "Contacta al administrador"
+            }
+        )
 
 @router.get("/user/{user_id}")
 async def get_user_config(

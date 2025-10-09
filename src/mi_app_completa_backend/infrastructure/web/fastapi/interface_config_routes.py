@@ -67,50 +67,97 @@ async def get_current_config_safe(
 ):
     """
     Obtener la configuración actual de interfaz - versión segura
-    Fallback graceful si no hay configuración
+    Siempre devuelve una configuración válida (fallback graceful)
     ENDPOINT PÚBLICO - No requiere autenticación
+    
+    🆕 MEJORADO: Siempre devuelve configuración en formato correcto
     """
     try:
         config = await use_cases.get_current_config()
 
-        # Si no hay configuración, retornar configuración por defecto
-        if not config:
-            return {
-                "id": "default-config",
-                "theme": {
-                    "primary": {"500": "#3b82f6"},
-                    "secondary": {"500": "#64748b"},
-                    "accent": {"500": "#06b6d4"},
-                    "neutral": {"500": "#6b7280"}
-                },
-                "branding": {
-                    "title": "WorkTecApp",
-                    "tagline": "Tu plataforma de trabajo",
-                    "description": "Sistema completo de gestión"
-                },
-                "logos": {
-                    "primary": None,
-                    "secondary": None,
-                    "favicon": None
-                },
-                "isActive": True,
-                "createdAt": "2024-01-01T00:00:00.000Z",
-                "updatedAt": "2024-01-01T00:00:00.000Z"
-            }
+        # Si hay configuración en BD, devolverla
+        if config:
+            logger.info("✅ Configuración obtenida desde MongoDB")
+            return config
 
-        return config
+        # 🆕 FALLBACK: Crear configuración por defecto en formato correcto
+        logger.warn("⚠️ No hay configuración en BD, creando configuración por defecto")
+        
+        # Crear configuración que coincida con el archivo interface_config.json del backend
+        fallback_config = await use_cases.create_default_config()
+        
+        logger.info("✅ Configuración por defecto creada y activada")
+        return fallback_config
+
     except Exception as e:
         logger.error(f"Error getting safe config: {e}")
-        # En caso de error, retornar configuración mínima
+        
+        # 🚨 ÚLTIMO RECURSO: Configuración mínima de emergencia
+        logger.error("🚨 Devolviendo configuración de emergencia")
         return {
-            "id": "fallback-config",
+            "id": "emergency-config",
             "theme": {
-                "primary": {"500": "#3b82f6"}
+                "mode": "light",
+                "name": "Configuración de Emergencia",
+                "colors": {
+                    "primary": {
+                        "50": "#f8fafc", "100": "#f1f5f9", "200": "#e2e8f0",
+                        "300": "#cbd5e1", "400": "#94a3b8", "500": "#64748b",
+                        "600": "#475569", "700": "#334155", "800": "#1e293b", "900": "#0f172a"
+                    },
+                    "secondary": {
+                        "50": "#f8fafc", "100": "#f1f5f9", "200": "#e2e8f0",
+                        "300": "#cbd5e1", "400": "#94a3b8", "500": "#64748b",
+                        "600": "#475569", "700": "#334155", "800": "#1e293b", "900": "#0f172a"
+                    },
+                    "accent": {
+                        "50": "#f8fafc", "100": "#f1f5f9", "200": "#e2e8f0",
+                        "300": "#cbd5e1", "400": "#94a3b8", "500": "#64748b",
+                        "600": "#475569", "700": "#334155", "800": "#1e293b", "900": "#0f172a"
+                    },
+                    "neutral": {
+                        "50": "#f9fafb", "100": "#f3f4f6", "200": "#e5e7eb",
+                        "300": "#d1d5db", "400": "#9ca3af", "500": "#6b7280",
+                        "600": "#4b5563", "700": "#374151", "800": "#1f2937", "900": "#111827"
+                    }
+                },
+                "typography": {
+                    "fontFamily": {
+                        "primary": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                        "secondary": "Georgia, serif",
+                        "mono": "Monaco, monospace"
+                    },
+                    "fontSize": {
+                        "xs": "0.75rem", "sm": "0.875rem", "base": "1rem",
+                        "lg": "1.125rem", "xl": "1.25rem", "2xl": "1.5rem"
+                    },
+                    "fontWeight": {
+                        "light": 300, "normal": 400, "medium": 500, "semibold": 600, "bold": 700
+                    }
+                },
+                "layout": {
+                    "borderRadius": {
+                        "sm": "0.125rem", "base": "0.25rem", "md": "0.375rem",
+                        "lg": "0.5rem", "xl": "0.75rem", "2xl": "1rem"
+                    }
+                }
+            },
+            "logos": {
+                "mainLogo": { "text": "Sistema", "showText": True, "showImage": False },
+                "favicon": {},
+                "sidebarLogo": { "text": "Sistema", "showText": True, "showImage": False, "collapsedText": "S" }
             },
             "branding": {
-                "title": "WorkTecApp"
+                "appName": "Sistema en Mantenimiento",
+                "appDescription": "Conectando con servidor...",
+                "tagline": "Cargando configuración",
+                "companyName": "Sistema",
+                "welcomeMessage": "Conectando..."
             },
-            "isActive": True
+            "customCSS": None,
+            "isActive": True,
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T00:00:00.000Z"
         }
 
 @router.patch("/partial")
