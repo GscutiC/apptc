@@ -117,6 +117,7 @@ class CreateApplicationUseCase:
             province=dto.property_info.province,
             district=dto.property_info.district,
             lote=dto.property_info.lote,
+            address=dto.property_info.address,  # ← CAMPO FALTANTE AGREGADO
             ubigeo_code=dto.property_info.ubigeo_code,
             populated_center=dto.property_info.populated_center,
             manzana=dto.property_info.manzana,

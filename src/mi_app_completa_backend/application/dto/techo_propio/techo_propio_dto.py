@@ -72,6 +72,7 @@ class PropertyInfoCreateDTO(BaseModel):
     province: str = Field(..., min_length=2, max_length=50)
     district: str = Field(..., min_length=2, max_length=50)
     lote: str = Field(..., min_length=1, max_length=20)
+    address: str = Field(..., min_length=5, max_length=200)
     ubigeo_code: Optional[str] = Field(None, min_length=6, max_length=6)
     populated_center: Optional[str] = Field(None, max_length=100)
     manzana: Optional[str] = Field(None, max_length=20)
@@ -208,16 +209,20 @@ class TechoPropioApplicationCreateDTO(BaseModel):
         # Validar DNIs únicos
         all_dnis = set()
         if main_applicant:
-            all_dnis.add(main_applicant.document_number)
+            # En mode='before', los objetos son diccionarios
+            main_dni = main_applicant.get('document_number') if isinstance(main_applicant, dict) else main_applicant.document_number
+            all_dnis.add(main_dni)
         if spouse:
-            if spouse.document_number in all_dnis:
-                raise ValueError(f'DNI duplicado: {spouse.document_number}')
-            all_dnis.add(spouse.document_number)
+            spouse_dni = spouse.get('document_number') if isinstance(spouse, dict) else spouse.document_number
+            if spouse_dni in all_dnis:
+                raise ValueError(f'DNI duplicado: {spouse_dni}')
+            all_dnis.add(spouse_dni)
         
         for member in household_members:
-            if member.document_number in all_dnis:
-                raise ValueError(f'DNI duplicado: {member.document_number}')
-            all_dnis.add(member.document_number)
+            member_dni = member.get('document_number') if isinstance(member, dict) else member.document_number
+            if member_dni in all_dnis:
+                raise ValueError(f'DNI duplicado: {member_dni}')
+            all_dnis.add(member_dni)
         
         return values
 
@@ -273,6 +278,7 @@ class PropertyInfoResponseDTO(BaseModel):
     province: str
     district: str
     lote: str
+    address: str
     ubigeo_code: Optional[str]
     populated_center: Optional[str]
     manzana: Optional[str]

@@ -20,6 +20,7 @@ class PropertyInfo(TechoPropioBaseEntity):
     province: str           # Provincia  
     district: str           # Distrito
     lote: str               # Lote
+    address: str            # Dirección del predio
     
     # Campos opcionales después
     ubigeo_code: Optional[str] = None  # Código UBIGEO de 6 dígitos
@@ -48,7 +49,8 @@ class PropertyInfo(TechoPropioBaseEntity):
             ("departamento", self.department),
             ("provincia", self.province),
             ("distrito", self.district),
-            ("lote", self.lote)
+            ("lote", self.lote),
+            ("dirección", self.address)
         ]
         
         for field_name, value in required_fields:
@@ -144,10 +146,11 @@ class PropertyInfo(TechoPropioBaseEntity):
             "department": self.department,
             "province": self.province,
             "district": self.district,
+            "lote": self.lote,
+            "address": self.address,
             "ubigeo_code": self.ubigeo_code,
             "populated_center": self.populated_center,
             "manzana": self.manzana,
-            "lote": self.lote,
             "sub_lote": self.sub_lote,
             "reference": self.reference,
             "latitude": self.latitude,
@@ -166,6 +169,7 @@ class PropertyInfo(TechoPropioBaseEntity):
             province=data["province"],
             district=data["district"],
             lote=data.get("lote", ""),
+            address=data.get("address", ""),
             ubigeo_code=data.get("ubigeo_code"),
             populated_center=data.get("populated_center"),
             manzana=data.get("manzana"),

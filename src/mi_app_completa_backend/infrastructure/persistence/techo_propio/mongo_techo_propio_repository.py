@@ -455,9 +455,18 @@ class MongoTechoPropioRepository(TechoPropioRepository):
             stats = result[0]
             
             # Procesar breakdown de estados
+            status_breakdown = stats.get("status_breakdown", [])
             status_counts = {}
-            for status in stats.get("status_breakdown", []):
-                status_counts[status] = status_counts.get(status, 0) + 1
+            
+            # Convertir a lista si es un cursor
+            if hasattr(status_breakdown, '__iter__') and not isinstance(status_breakdown, (list, dict)):
+                status_breakdown = list(status_breakdown)
+            
+            if isinstance(status_breakdown, list):
+                for status in status_breakdown:
+                    status_counts[status] = status_counts.get(status, 0) + 1
+            else:
+                status_counts = status_breakdown
             
             stats["status_breakdown"] = status_counts
             
@@ -1376,80 +1385,7 @@ class MongoTechoPropioRepository(TechoPropioRepository):
             logger.error(f"Error verificando DNI {dni}: {e}")
             return False
     
-    async def get_application_statistics(
-        self,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
-    ) -> Dict[str, Any]:
-        """Obtener estadísticas de solicitudes"""
-        try:
-            # Query base
-            match_query = {}
-            if start_date and end_date:
-                match_query["created_at"] = {"$gte": start_date, "$lte": end_date}
-            elif start_date:
-                match_query["created_at"] = {"$gte": start_date}
-            elif end_date:
-                match_query["created_at"] = {"$lte": end_date}
-            
-            # Pipeline de agregación
-            pipeline = []
-            
-            if match_query:
-                pipeline.append({"$match": match_query})
-            
-            pipeline.extend([
-                {
-                    "$group": {
-                        "_id": "$status",
-                        "count": {"$sum": 1},
-                        "avg_income": {"$avg": "$economic_info.total_household_income"},
-                        "avg_household_size": {"$avg": {"$size": "$household_members"}}
-                    }
-                }
-            ])
-            
-            results = list(self.collection.aggregate(pipeline))
-            
-            # Procesar resultados
-            stats = {
-                "total_applications": 0,
-                "by_status": {},
-                "average_income": 0,
-                "average_household_size": 0
-            }
-            
-            total_apps = 0
-            total_income = 0
-            total_household_size = 0
-            
-            for result in results:
-                status = result["_id"]
-                count = result["count"]
-                
-                stats["by_status"][status] = count
-                total_apps += count
-                
-                if result.get("avg_income"):
-                    total_income += result["avg_income"] * count
-                if result.get("avg_household_size"):
-                    total_household_size += result["avg_household_size"] * count
-            
-            stats["total_applications"] = total_apps
-            if total_apps > 0:
-                stats["average_income"] = total_income / total_apps
-                stats["average_household_size"] = total_household_size / total_apps
-            
-            return stats
-            
-        except Exception as e:
-            logger.error(f"Error obteniendo estadísticas: {e}")
-            return {
-                "total_applications": 0,
-                "by_status": {},
-                "average_income": 0,
-                "average_household_size": 0
-            }
+
     
     async def search_applications(
         self,

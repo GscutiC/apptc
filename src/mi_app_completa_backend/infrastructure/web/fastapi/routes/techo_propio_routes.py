@@ -6,7 +6,7 @@ Maneja todas las operaciones HTTP con documentación OpenAPI
 from typing import Optional, List, Dict, Any
 from datetime import date
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, status, Request
 from fastapi.responses import JSONResponse
 
 # Configurar logger
@@ -61,15 +61,29 @@ router = APIRouter(
     description="Crea una nueva solicitud para el programa Techo Propio"
 )
 async def create_application(
-    application_data: TechoPropioApplicationCreateDTO,
+    request: Request,
     use_cases: TechoPropioUseCases = Depends(get_techo_propio_use_cases),
-    current_user: dict = Depends(get_current_user)
+    current_user = Depends(get_current_user)  # Remover tipo dict, es un objeto User
 ):
     """Crear nueva solicitud Techo Propio"""
     try:
+        # Obtener datos raw del request
+        raw_data = await request.json()
+        logger.info(f"🔍 Datos recibidos en el backend: {raw_data}")
+        
+        # Intentar parsear el DTO
+        try:
+            application_data = TechoPropioApplicationCreateDTO(**raw_data)
+            logger.info("✅ DTO parseado correctamente")
+        except Exception as parse_error:
+            logger.error(f"❌ Error parseando DTO: {parse_error}")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Error de validación: {str(parse_error)}"
+            )
         result = await use_cases.create_application(
             dto=application_data,
-            user_id=current_user["user_id"]
+            user_id=current_user.clerk_id  # Usar el clerk_id del objeto User
         )
         return result
     except ValueError as e:
