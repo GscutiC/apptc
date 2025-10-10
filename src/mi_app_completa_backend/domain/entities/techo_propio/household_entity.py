@@ -5,11 +5,13 @@ Representa a los miembros de la carga familiar del solicitante
 
 from datetime import datetime, date
 from typing import Optional
+from decimal import Decimal
 from dataclasses import dataclass
 from .base_entity import TechoPropioBaseEntity
 from ...value_objects.techo_propio import (
     DocumentType, EducationLevel, FamilyRelationship, 
-    DisabilityType, VALIDATION_CONSTANTS
+    DisabilityType, CivilStatus, EmploymentSituation, WorkCondition,
+    VALIDATION_CONSTANTS
 )
 
 
@@ -28,12 +30,21 @@ class HouseholdMember(TechoPropioBaseEntity):
     document_number: str
     birth_date: date
     
-    # Relación familiar
-    relationship: FamilyRelationship
+    # Información personal adicional
+    civil_status: CivilStatus  # ✅ NUEVO - Estado civil
+    education_level: EducationLevel  # ✅ MODIFICADO - Ahora requerido
     
-    # Información adicional
-    education_level: Optional[EducationLevel] = None
+    # Información laboral y económica
+    occupation: str  # ✅ NUEVO - Ocupación
+    employment_situation: EmploymentSituation  # ✅ NUEVO - Dependiente/Independiente
+    work_condition: WorkCondition  # ✅ NUEVO - Formal/Informal
+    monthly_income: Decimal  # ✅ NUEVO - Ingreso mensual
+    
+    # Información de salud
     disability_type: DisabilityType = DisabilityType.NONE
+    
+    # Relación familiar
+    relationship: Optional[FamilyRelationship] = None  # ✅ MODIFICADO - Ahora opcional
     
     # Metadata
     is_dependent: bool = True  # Si es dependiente económicamente
@@ -44,7 +55,10 @@ class HouseholdMember(TechoPropioBaseEntity):
         self._validate_names()
         self._validate_document_number()
         self._validate_birth_date()
-        self._validate_relationship_age_consistency()
+        self._validate_occupation()  # ✅ NUEVO
+        self._validate_monthly_income()  # ✅ NUEVO
+        if self.relationship:  # Solo validar si se proporciona relación
+            self._validate_relationship_age_consistency()
     
     def _validate_names(self) -> None:
         """Validar nombres y apellidos"""
@@ -89,6 +103,24 @@ class HouseholdMember(TechoPropioBaseEntity):
         age = today.year - self.birth_date.year - ((today.month, today.day) < (self.birth_date.month, self.birth_date.day))
         if age > 100:
             raise ValueError("La edad no puede ser mayor a 100 años")
+    
+    def _validate_occupation(self) -> None:
+        """Validar ocupación"""
+        if not self.occupation or not self.occupation.strip():
+            raise ValueError("La ocupación es obligatoria")
+        if len(self.occupation.strip()) < 2:
+            raise ValueError("La ocupación debe tener al menos 2 caracteres")
+        if len(self.occupation.strip()) > 200:
+            raise ValueError("La ocupación no puede exceder 200 caracteres")
+    
+    def _validate_monthly_income(self) -> None:
+        """Validar ingreso mensual"""
+        if self.monthly_income is None:
+            raise ValueError("El ingreso mensual es obligatorio")
+        if self.monthly_income < 0:
+            raise ValueError("El ingreso mensual no puede ser negativo")
+        if self.monthly_income > 50000:
+            raise ValueError("El ingreso mensual no puede exceder S/ 50,000")
     
     def _validate_relationship_age_consistency(self) -> None:
         """Validar consistencia entre relación familiar y edad"""

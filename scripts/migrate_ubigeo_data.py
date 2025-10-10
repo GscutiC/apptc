@@ -80,9 +80,9 @@ class UbigeoMigrator:
             for encoding in ['utf-8', 'latin-1', 'cp1252']:
                 try:
                     with open(csv_file_path, 'r', encoding=encoding) as file:
-                        csv_reader = csv.reader(file)
+                        csv_reader = csv.reader(file, delimiter=';')  # Usar ; como delimitador
                         next(csv_reader)  # Saltar header
-                        
+
                         for row in csv_reader:
                             if len(row) >= 4:
                                 district = row[1].strip().upper()
@@ -200,13 +200,17 @@ class UbigeoMigrator:
 
 def main():
     # Configuración
-    csv_file = "c:\\Users\\pc1\\Desktop\\AppTc\\departamentos_provincias_distritos_peru.csv"
+    csv_file = "c:\\Users\\pc1\\Desktop\\AppTc\\departamentos_provincias_distritos_perucsv.csv"
     mongodb_url = "mongodb://localhost:27017"
-    db_name = "mi_app_completa_db"
-    
+    db_name = "apptc"  # Base de datos correcta
+
+    print(f"[INFO] Iniciando migracion de UBIGEO")
+    print(f"[INFO] CSV: {csv_file}")
+    print(f"[INFO] Database: {db_name}")
+
     # Ejecutar migración
     migrator = UbigeoMigrator(mongodb_url, db_name)
-    migrator.migrate(csv_file)
+    migrator.migrate(csv_file, clear_existing=True)
 
 if __name__ == "__main__":
     main()

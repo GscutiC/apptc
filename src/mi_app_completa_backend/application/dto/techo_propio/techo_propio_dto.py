@@ -95,9 +95,14 @@ class HouseholdMemberCreateDTO(BaseModel):
     document_type: DocumentType
     document_number: str = Field(..., min_length=8, max_length=12)
     birth_date: date
-    relationship: FamilyRelationship
-    education_level: Optional[EducationLevel] = None
+    civil_status: CivilStatus  # ✅ NUEVO - Estado civil
+    education_level: EducationLevel  # ✅ MODIFICADO - Ahora requerido
+    occupation: str = Field(..., min_length=2, max_length=200)  # ✅ NUEVO - Ocupación
+    employment_situation: EmploymentSituation  # ✅ NUEVO - Dependiente/Independiente
+    work_condition: WorkCondition  # ✅ NUEVO - Formal/Informal (era employment_condition en frontend)
+    monthly_income: Decimal = Field(..., gt=0, le=50000)  # ✅ NUEVO - Ingreso mensual
     disability_type: DisabilityType = DisabilityType.NONE
+    relationship: Optional[FamilyRelationship] = None  # ✅ MODIFICADO - Ahora opcional
     is_dependent: bool = True
 
     @validator('document_number')

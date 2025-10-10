@@ -759,73 +759,8 @@ async def get_applications(
         )
 
 
-@router.get(
-    "/ubigeo/departments", 
-    summary="Obtener departamentos",
-    description="Obtiene lista de departamentos del Perú"
-)
-async def get_departments(
-    current_user: dict = Depends(get_current_user)
-):
-    """Obtener lista de departamentos"""
-    try:
-        # Lista básica de departamentos del Perú
-        departments = [
-            {"code": "01", "name": "Amazonas"},
-            {"code": "02", "name": "Áncash"},
-            {"code": "03", "name": "Apurímac"},
-            {"code": "04", "name": "Arequipa"},
-            {"code": "05", "name": "Ayacucho"},
-            {"code": "06", "name": "Cajamarca"},
-            {"code": "07", "name": "Callao"},
-            {"code": "08", "name": "Cusco"},
-            {"code": "09", "name": "Huancavelica"},
-            {"code": "10", "name": "Huánuco"},
-            {"code": "11", "name": "Ica"},
-            {"code": "12", "name": "Junín"},
-            {"code": "13", "name": "La Libertad"},
-            {"code": "14", "name": "Lambayeque"},
-            {"code": "15", "name": "Lima"},
-            {"code": "16", "name": "Loreto"},
-            {"code": "17", "name": "Madre de Dios"},
-            {"code": "18", "name": "Moquegua"},
-            {"code": "19", "name": "Pasco"},
-            {"code": "20", "name": "Piura"},
-            {"code": "21", "name": "Puno"},
-            {"code": "22", "name": "San Martín"},
-            {"code": "23", "name": "Tacna"},
-            {"code": "24", "name": "Tumbes"},
-            {"code": "25", "name": "Ucayali"}
-        ]
-        return {"departments": departments}
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error obteniendo departamentos: {str(e)}"
-        )
-
-
-@router.get(
-    "/statistics",
-    summary="Obtener estadísticas",
-    description="Obtiene estadísticas del módulo Techo Propio"
-)
-async def get_statistics(
-    current_user: dict = Depends(get_current_user)
-):
-    """Obtener estadísticas básicas"""
-    try:
-        # Estadísticas básicas por ahora
-        return {
-            "total_applications": 0,
-            "pending_applications": 0,
-            "approved_applications": 0,
-            "rejected_applications": 0,
-            "departments_count": 25,
-            "last_updated": "2025-10-09T20:00:00"
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error obteniendo estadísticas: {str(e)}"
-        )
+# ENDPOINTS DUPLICADOS ELIMINADOS
+# Los endpoints de ubicaciones (/locations/departments, /locations/provinces, /locations/districts)
+# ya están definidos en la sección "ENDPOINTS DE UBICACIÓN" (líneas 612-702)
+# El endpoint de estadísticas (/statistics) ya está definido en la sección
+# "ENDPOINTS DE ESTADÍSTICAS" (líneas 421-464)
