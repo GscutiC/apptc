@@ -8,12 +8,14 @@ from fastapi import Depends
 
 # Importar repositorio MongoDB
 from ..persistence.techo_propio import MongoTechoPropioRepository
+from ..persistence.mongodb.ubigeo_repository_impl import MongoUbigeoRepository
 
 # Importar casos de uso
 from ...application.use_cases.techo_propio import TechoPropioUseCases
 
-# Importar servicios externos existentes
+# Importar servicios
 from ..services.government_apis.reniec_service import ReniecService
+from ..services.government_apis.ubigeo_validation_service import UbigeoValidationService
 
 # Importar configuración de base de datos
 from ..config.database import get_database
@@ -28,6 +30,15 @@ def get_mongo_techo_propio_repository() -> MongoTechoPropioRepository:
     return MongoTechoPropioRepository()
 
 
+def get_mongo_ubigeo_repository() -> MongoUbigeoRepository:
+    """
+    Crear instancia del repositorio UBIGEO MongoDB
+    Inyecta la conexión a la base de datos
+    """
+    db = get_database()
+    return MongoUbigeoRepository(db)
+
+
 @lru_cache()
 def get_reniec_service() -> ReniecService:
     """
@@ -37,9 +48,20 @@ def get_reniec_service() -> ReniecService:
     return ReniecService()
 
 
+def get_ubigeo_validation_service(
+    ubigeo_repository: MongoUbigeoRepository = Depends(get_mongo_ubigeo_repository)
+) -> UbigeoValidationService:
+    """
+    Crear instancia del servicio de validación UBIGEO
+    Inyecta el repositorio MongoDB
+    """
+    return UbigeoValidationService(ubigeo_repository=ubigeo_repository)
+
+
 def get_techo_propio_use_cases(
     repository: MongoTechoPropioRepository = Depends(get_mongo_techo_propio_repository),
-    reniec_service: ReniecService = Depends(get_reniec_service)
+    reniec_service: ReniecService = Depends(get_reniec_service),
+    ubigeo_service: UbigeoValidationService = Depends(get_ubigeo_validation_service)
 ) -> TechoPropioUseCases:
     """
     Crear instancia del orquestador de casos de uso
@@ -47,7 +69,8 @@ def get_techo_propio_use_cases(
     """
     return TechoPropioUseCases(
         repository=repository,
-        reniec_service=reniec_service
+        reniec_service=reniec_service,
+        ubigeo_service=ubigeo_service
     )
 
 
@@ -55,4 +78,5 @@ def get_techo_propio_use_cases(
 def clear_dependency_cache():
     """Limpiar cache de dependencias (útil para testing)"""
     get_mongo_techo_propio_repository.cache_clear()
+    get_mongo_ubigeo_repository.cache_clear()
     get_reniec_service.cache_clear()

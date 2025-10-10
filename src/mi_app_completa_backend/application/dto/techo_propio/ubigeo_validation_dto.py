@@ -139,6 +139,12 @@ class LocationHierarchyDTO(BaseModel):
     geographic_data: Optional[GeographicDataDTO] = Field(None, description="Datos geográficos")
 
 
+class UbigeoItemDTO(BaseModel):
+    """DTO base para elementos UBIGEO (departamento, provincia, distrito)"""
+    code: str = Field(..., description="Código único del elemento")
+    name: str = Field(..., description="Nombre del elemento")
+
+
 class DepartmentListDTO(BaseModel):
     """DTO para lista de departamentos"""
     departments: List[str] = Field(..., description="Lista de departamentos")

@@ -3,7 +3,7 @@ Servicio RENIEC para consultas DNI - Arquitectura Modular
 Implementa BaseGovernmentAPI para consultas a RENIEC
 """
 
-import requests
+import httpx
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -62,43 +62,37 @@ class ReniecService(BaseGovernmentAPI):
             DniConsultaResponse: Datos de la persona
         """
         try:
-            logger.info(f"🔍 [RENIEC] Consultando DNI: {document}")
-            
             # Validar DNI
             if not self.validate_document(document):
-                logger.error(f"❌ [RENIEC] DNI inválido: {document}")
+                logger.error(f"DNI inválido: {document}")
                 raise DocumentValidationException(
                     "DNI inválido. Debe tener 8 dígitos numéricos."
                 )
             
-            logger.info(f"✅ [RENIEC] DNI válido, consultando APIs reales")
-            
             # Intentar APIs principales
             for endpoint in self.api_endpoints:
                 try:
-                    logger.info(f"🔄 [RENIEC] Probando API: {endpoint}")
                     resultado = await self._consultar_api_reniec(document, endpoint)
                     if resultado.success:
-                        logger.info(f"✅ [RENIEC] API exitosa: {endpoint}")
+                        logger.info(f"Consulta RENIEC exitosa para DNI: {document}")
                         return resultado
                 except Exception as e:
-                    logger.warning(f"⚠️ [RENIEC] API {endpoint} falló: {str(e)}")
+                    logger.warning(f"API {endpoint} falló: {str(e)}")
                     continue
             
             # Intentar endpoints de respaldo
             for endpoint in self.backup_endpoints:
                 try:
-                    logger.info(f"🔄 [RENIEC] Probando API backup: {endpoint}")
                     resultado = await self._consultar_api_reniec(document, endpoint)
                     if resultado.success:
-                        logger.info(f"✅ [RENIEC] API backup exitosa: {endpoint}")
+                        logger.info(f"Consulta RENIEC exitosa para DNI: {document}")
                         return resultado
                 except Exception as e:
-                    logger.warning(f"⚠️ [RENIEC] API backup {endpoint} falló: {str(e)}")
+                    logger.warning(f"API backup {endpoint} falló: {str(e)}")
                     continue
             
             # Si todas las APIs fallan
-            logger.error(f"❌ [RENIEC] Todas las APIs fallaron para DNI: {document}")
+            logger.error(f"Todas las APIs RENIEC fallaron para DNI: {document}")
             raise APIUnavailableException(
                 "No se pudo obtener información del DNI. Servicio RENIEC no disponible."
             )
@@ -112,7 +106,7 @@ class ReniecService(BaseGovernmentAPI):
             raise Exception(f"Error en consulta RENIEC: {str(e)}")
     
     async def _consultar_api_reniec(self, dni: str, endpoint: str) -> DniConsultaResponse:
-        """Intenta consultar una API real de RENIEC"""
+        """Intenta consultar una API real de RENIEC usando httpx async"""
         try:
             # Construir URL según el endpoint
             if "apis.net.pe" in endpoint:
@@ -120,7 +114,9 @@ class ReniecService(BaseGovernmentAPI):
             else:
                 url = f"{endpoint}{dni}"
             
-            response = requests.get(url, headers=self.headers, timeout=self.timeout)
+            # Usar httpx.AsyncClient para requests verdaderamente asíncronos
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(url, headers=self.headers)
             
             if response.status_code == 200:
                 data = response.json()
@@ -135,6 +131,7 @@ class ReniecService(BaseGovernmentAPI):
                     cache_hit=False
                 )
             else:
+                logger.warning(f"API RENIEC HTTP {response.status_code}")
                 return DniConsultaResponse(
                     success=False,
                     message=f"API no disponible - HTTP {response.status_code}",
@@ -144,6 +141,10 @@ class ReniecService(BaseGovernmentAPI):
                 )
                 
         except Exception as e:
+            logger.error(f"❌ [RENIEC] Excepción en _consultar_api_reniec: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            
             return DniConsultaResponse(
                 success=False,
                 message=f"Error API: {str(e)}",

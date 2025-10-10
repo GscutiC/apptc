@@ -4,7 +4,7 @@ Maneja persistencia, queries complejas, y mapeo entidad-documento
 """
 
 from typing import Optional, List, Dict, Any
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from decimal import Decimal
 import logging
 from bson import ObjectId
@@ -49,6 +49,12 @@ class MongoTechoPropioRepository(TechoPropioRepository):
     def _create_indexes(self) -> None:
         """Crear índices para optimizar consultas"""
         try:
+            # Solo crear índices si estamos en el contexto principal, no en worker threads
+            import threading
+            if threading.current_thread() is not threading.main_thread():
+                logger.info("Saltando creación de índices en worker thread")
+                return
+                
             # Índice único para DNI del solicitante principal
             self.collection.create_index(
                 "main_applicant.document_number",
@@ -813,3 +819,682 @@ class MongoTechoPropioRepository(TechoPropioRepository):
             mongo_query["priority_score"] = priority_filter
         
         return mongo_query
+
+    # ===== MÉTODOS FALTANTES PARA COMPLETAR LA IMPLEMENTACIÓN =====
+    
+    async def create_application(self, application: TechoPropioApplication) -> TechoPropioApplication:
+        """Crear nueva solicitud (alias para save_application)"""
+        return await self.save_application(application)
+    
+    async def get_application_by_number(self, application_number: str) -> Optional[TechoPropioApplication]:
+        """Obtener solicitud por número de solicitud"""
+        try:
+            document = self.collection.find_one({
+                "application_number": application_number
+            })
+            
+            if not document:
+                return None
+            
+            return self._document_to_entity(document)
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo solicitud por número {application_number}: {e}")
+            return None
+    
+    async def get_applications_by_dni(self, dni: str) -> List[TechoPropioApplication]:
+        """Obtener todas las solicitudes que incluyen un DNI específico"""
+        try:
+            # Buscar en solicitante principal y miembros del hogar
+            query = {
+                "$or": [
+                    {"main_applicant.document_number": dni},
+                    {"household_members.document_number": dni}
+                ]
+            }
+            
+            documents = list(self.collection.find(query))
+            applications = []
+            
+            for doc in documents:
+                try:
+                    app = self._document_to_entity(doc)
+                    applications.append(app)
+                except Exception as e:
+                    logger.error(f"Error convirtiendo documento a entidad: {e}")
+                    continue
+            
+            return applications
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo solicitudes por DNI {dni}: {e}")
+            return []
+    
+    async def check_application_number_exists(self, application_number: str) -> bool:
+        """Verificar si un número de solicitud ya existe"""
+        try:
+            count = self.collection.count_documents({
+                "application_number": application_number
+            })
+            return count > 0
+            
+        except Exception as e:
+            logger.error(f"Error verificando número de solicitud {application_number}: {e}")
+            return False
+    
+    async def get_application_history(self, application_id: str) -> List[Dict[str, Any]]:
+        """Obtener historial de cambios de una solicitud"""
+        try:
+            # Por simplicidad, retornamos historial vacío
+            # En producción, esto debería consultar una colección de auditoría
+            return []
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo historial de solicitud {application_id}: {e}")
+            return []
+    
+    async def get_applications_by_date_range(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+        status: Optional[ApplicationStatus] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes en rango de fechas"""
+        try:
+            query = {
+                "created_at": {
+                    "$gte": start_date,
+                    "$lte": end_date
+                }
+            }
+            
+            if status:
+                query["status"] = status.value
+            
+            documents = list(
+                self.collection.find(query)
+                .sort("created_at", DESCENDING)
+                .skip(offset)
+                .limit(limit)
+            )
+            
+            applications = []
+            for doc in documents:
+                try:
+                    app = self._document_to_entity(doc)
+                    applications.append(app)
+                except Exception as e:
+                    logger.error(f"Error convirtiendo documento: {e}")
+                    continue
+            
+            return applications
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo solicitudes por rango de fechas: {e}")
+            return []
+    
+    async def get_applications_by_department(
+        self,
+        department: str,
+        status: Optional[ApplicationStatus] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes por departamento"""
+        try:
+            query = {"property_info.department": department}
+            
+            if status:
+                query["status"] = status.value
+            
+            documents = list(
+                self.collection.find(query)
+                .sort("created_at", DESCENDING)
+                .skip(offset)
+                .limit(limit)
+            )
+            
+            applications = []
+            for doc in documents:
+                try:
+                    app = self._document_to_entity(doc)
+                    applications.append(app)
+                except Exception as e:
+                    logger.error(f"Error convirtiendo documento: {e}")
+                    continue
+            
+            return applications
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo solicitudes por departamento {department}: {e}")
+            return []
+    
+    async def get_applications_by_district(
+        self,
+        department: str,
+        province: str,
+        district: str,
+        status: Optional[ApplicationStatus] = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes por distrito específico"""
+        try:
+            query = {
+                "property_info.department": department,
+                "property_info.province": province,
+                "property_info.district": district
+            }
+            
+            if status:
+                query["status"] = status.value
+            
+            documents = list(
+                self.collection.find(query)
+                .sort("created_at", DESCENDING)
+                .skip(offset)
+                .limit(limit)
+            )
+            
+            applications = []
+            for doc in documents:
+                try:
+                    app = self._document_to_entity(doc)
+                    applications.append(app)
+                except Exception as e:
+                    logger.error(f"Error convirtiendo documento: {e}")
+                    continue
+            
+            return applications
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo solicitudes por distrito: {e}")
+            return []
+    
+    async def get_applications_by_household_size(
+        self,
+        min_size: int,
+        max_size: int,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes por tamaño de familia"""
+        try:
+            query = {
+                "household_size": {
+                    "$gte": min_size,
+                    "$lte": max_size
+                }
+            }
+            
+            documents = list(
+                self.collection.find(query)
+                .sort("created_at", DESCENDING)
+                .skip(offset)
+                .limit(limit)
+            )
+            
+            applications = []
+            for doc in documents:
+                try:
+                    app = self._document_to_entity(doc)
+                    applications.append(app)
+                except Exception as e:
+                    logger.error(f"Error convirtiendo documento: {e}")
+                    continue
+            
+            return applications
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo solicitudes por tamaño de hogar: {e}")
+            return []
+    
+    async def get_applications_by_income_range(
+        self,
+        min_income: float,
+        max_income: float,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes por rango de ingresos familiares"""
+        try:
+            query = {
+                "economic_info.total_household_income": {
+                    "$gte": min_income,
+                    "$lte": max_income
+                }
+            }
+            
+            documents = list(
+                self.collection.find(query)
+                .sort("created_at", DESCENDING)
+                .skip(offset)
+                .limit(limit)
+            )
+            
+            applications = []
+            for doc in documents:
+                try:
+                    app = self._document_to_entity(doc)
+                    applications.append(app)
+                except Exception as e:
+                    logger.error(f"Error convirtiendo documento: {e}")
+                    continue
+            
+            return applications
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo solicitudes por rango de ingresos: {e}")
+            return []
+    
+    async def get_applications_submitted_today(self) -> List[TechoPropioApplication]:
+        """Obtener solicitudes enviadas hoy"""
+        try:
+            # Fecha de inicio y fin del día actual
+            today = datetime.now().date()
+            start_of_day = datetime.combine(today, datetime.min.time())
+            end_of_day = datetime.combine(today, datetime.max.time())
+            
+            return await self.get_applications_by_date_range(
+                start_date=start_of_day,
+                end_date=end_of_day,
+                limit=1000  # Sin límite práctico para hoy
+            )
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo solicitudes de hoy: {e}")
+            return []
+    
+    async def get_expired_draft_applications(
+        self,
+        days_threshold: int = 30
+    ) -> List[TechoPropioApplication]:
+        """Obtener borradores expirados para limpieza"""
+        try:
+            # Calcular fecha límite
+            threshold_date = datetime.now() - timedelta(days=days_threshold)
+            
+            query = {
+                "status": ApplicationStatus.DRAFT.value,
+                "created_at": {"$lt": threshold_date}
+            }
+            
+            documents = list(
+                self.collection.find(query)
+                .sort("created_at", ASCENDING)
+            )
+            
+            applications = []
+            for doc in documents:
+                try:
+                    app = self._document_to_entity(doc)
+                    applications.append(app)
+                except Exception as e:
+                    logger.error(f"Error convirtiendo documento: {e}")
+                    continue
+            
+            return applications
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo borradores expirados: {e}")
+            return []
+    
+    async def get_pending_review_applications(
+        self,
+        reviewer_id: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes pendientes de revisión"""
+        try:
+            query = {"status": ApplicationStatus.PENDING_REVIEW.value}
+            
+            if reviewer_id:
+                query["assigned_reviewer"] = reviewer_id
+            
+            documents = list(
+                self.collection.find(query)
+                .sort("created_at", ASCENDING)  # FIFO para revisiones
+                .skip(offset)
+                .limit(limit)
+            )
+            
+            applications = []
+            for doc in documents:
+                try:
+                    app = self._document_to_entity(doc)
+                    applications.append(app)
+                except Exception as e:
+                    logger.error(f"Error convirtiendo documento: {e}")
+                    continue
+            
+            return applications
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo solicitudes pendientes: {e}")
+            return []
+    
+    async def log_application_change(
+        self,
+        application_id: str,
+        user_id: str,
+        action: str,
+        old_values: Optional[Dict[str, Any]] = None,
+        new_values: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """Registrar cambio en solicitud para auditoría"""
+        try:
+            # Por simplicidad, solo loggeamos. En producción se guardaría en colección de auditoría
+            logger.info(f"Application {application_id} - Action: {action} by User: {user_id}")
+            if old_values:
+                logger.info(f"Old values: {old_values}")
+            if new_values:
+                logger.info(f"New values: {new_values}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error registrando cambio de solicitud: {e}")
+            return False
+    
+    async def bulk_update_status(
+        self,
+        application_ids: List[str],
+        new_status: ApplicationStatus,
+        updated_by: str,
+        reason: Optional[str] = None
+    ) -> int:
+        """Actualizar estado de múltiples solicitudes"""
+        try:
+            object_ids = [ObjectId(app_id) for app_id in application_ids]
+            
+            update_doc = {
+                "$set": {
+                    "status": new_status.value,
+                    "updated_at": datetime.now(),
+                    "updated_by": updated_by
+                }
+            }
+            
+            if reason:
+                update_doc["$set"]["status_change_reason"] = reason
+            
+            result = self.collection.update_many(
+                {"_id": {"$in": object_ids}},
+                update_doc
+            )
+            
+            logger.info(f"Bulk update: {result.modified_count} applications updated to {new_status.value}")
+            return result.modified_count
+            
+        except Exception as e:
+            logger.error(f"Error en actualización masiva: {e}")
+            return 0
+
+    # ===== MÉTODOS RESTANTES PARA COMPLETAR LA INTERFAZ =====
+    
+    async def delete_application(self, application_id: str) -> bool:
+        """Eliminar solicitud (soft delete recomendado)"""
+        try:
+            # Soft delete - marcar como eliminado
+            result = self.collection.update_one(
+                {"_id": ObjectId(application_id)},
+                {
+                    "$set": {
+                        "status": ApplicationStatus.CANCELLED.value,
+                        "deleted_at": datetime.now(),
+                        "is_deleted": True
+                    }
+                }
+            )
+            
+            return result.modified_count > 0
+            
+        except Exception as e:
+            logger.error(f"Error eliminando solicitud {application_id}: {e}")
+            return False
+    
+    async def get_applications_by_user(
+        self, 
+        user_id: str,
+        status: Optional[ApplicationStatus] = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes de un usuario específico"""
+        try:
+            query = {"created_by": user_id}
+            
+            if status:
+                query["status"] = status.value
+            
+            documents = list(
+                self.collection.find(query)
+                .sort("created_at", DESCENDING)
+                .skip(offset)
+                .limit(limit)
+            )
+            
+            applications = []
+            for doc in documents:
+                try:
+                    app = self._document_to_entity(doc)
+                    applications.append(app)
+                except Exception as e:
+                    logger.error(f"Error convirtiendo documento: {e}")
+                    continue
+            
+            return applications
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo solicitudes del usuario {user_id}: {e}")
+            return []
+    
+    async def count_applications_by_user(
+        self, 
+        user_id: str,
+        status: Optional[ApplicationStatus] = None
+    ) -> int:
+        """Contar solicitudes de un usuario"""
+        try:
+            query = {"created_by": user_id}
+            
+            if status:
+                query["status"] = status.value
+            
+            return self.collection.count_documents(query)
+            
+        except Exception as e:
+            logger.error(f"Error contando solicitudes del usuario {user_id}: {e}")
+            return 0
+    
+    async def get_applications_by_status(
+        self,
+        status: ApplicationStatus,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes por estado"""
+        try:
+            query = {"status": status.value}
+            
+            documents = list(
+                self.collection.find(query)
+                .sort("created_at", DESCENDING)
+                .skip(offset)
+                .limit(limit)
+            )
+            
+            applications = []
+            for doc in documents:
+                try:
+                    app = self._document_to_entity(doc)
+                    applications.append(app)
+                except Exception as e:
+                    logger.error(f"Error convirtiendo documento: {e}")
+                    continue
+            
+            return applications
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo solicitudes con estado {status.value}: {e}")
+            return []
+    
+    async def count_applications_by_status(self, status: ApplicationStatus) -> int:
+        """Contar solicitudes por estado"""
+        try:
+            return self.collection.count_documents({"status": status.value})
+            
+        except Exception as e:
+            logger.error(f"Error contando solicitudes con estado {status.value}: {e}")
+            return 0
+    
+    async def check_dni_exists_in_applications(
+        self, 
+        dni: str,
+        exclude_application_id: Optional[str] = None
+    ) -> bool:
+        """Verificar si un DNI ya existe en otras solicitudes activas"""
+        try:
+            query = {
+                "$or": [
+                    {"main_applicant.document_number": dni},
+                    {"household_members.document_number": dni}
+                ],
+                "status": {"$nin": [ApplicationStatus.CANCELLED.value, ApplicationStatus.REJECTED.value]}
+            }
+            
+            if exclude_application_id:
+                query["_id"] = {"$ne": ObjectId(exclude_application_id)}
+            
+            count = self.collection.count_documents(query)
+            return count > 0
+            
+        except Exception as e:
+            logger.error(f"Error verificando DNI {dni}: {e}")
+            return False
+    
+    async def get_application_statistics(
+        self,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> Dict[str, Any]:
+        """Obtener estadísticas de solicitudes"""
+        try:
+            # Query base
+            match_query = {}
+            if start_date and end_date:
+                match_query["created_at"] = {"$gte": start_date, "$lte": end_date}
+            elif start_date:
+                match_query["created_at"] = {"$gte": start_date}
+            elif end_date:
+                match_query["created_at"] = {"$lte": end_date}
+            
+            # Pipeline de agregación
+            pipeline = []
+            
+            if match_query:
+                pipeline.append({"$match": match_query})
+            
+            pipeline.extend([
+                {
+                    "$group": {
+                        "_id": "$status",
+                        "count": {"$sum": 1},
+                        "avg_income": {"$avg": "$economic_info.total_household_income"},
+                        "avg_household_size": {"$avg": {"$size": "$household_members"}}
+                    }
+                }
+            ])
+            
+            results = list(self.collection.aggregate(pipeline))
+            
+            # Procesar resultados
+            stats = {
+                "total_applications": 0,
+                "by_status": {},
+                "average_income": 0,
+                "average_household_size": 0
+            }
+            
+            total_apps = 0
+            total_income = 0
+            total_household_size = 0
+            
+            for result in results:
+                status = result["_id"]
+                count = result["count"]
+                
+                stats["by_status"][status] = count
+                total_apps += count
+                
+                if result.get("avg_income"):
+                    total_income += result["avg_income"] * count
+                if result.get("avg_household_size"):
+                    total_household_size += result["avg_household_size"] * count
+            
+            stats["total_applications"] = total_apps
+            if total_apps > 0:
+                stats["average_income"] = total_income / total_apps
+                stats["average_household_size"] = total_household_size / total_apps
+            
+            return stats
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo estadísticas: {e}")
+            return {
+                "total_applications": 0,
+                "by_status": {},
+                "average_income": 0,
+                "average_household_size": 0
+            }
+    
+    async def search_applications(
+        self,
+        filters: Dict[str, Any],
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Búsqueda avanzada con múltiples filtros"""
+        try:
+            # Construir query MongoDB usando el método existente
+            mongo_query = self._build_mongo_query(filters)
+            
+            # Determinar orden de sorting
+            sort_direction = DESCENDING if sort_order.lower() == "desc" else ASCENDING
+            
+            documents = list(
+                self.collection.find(mongo_query)
+                .sort(sort_by, sort_direction)
+                .skip(offset)
+                .limit(limit)
+            )
+            
+            applications = []
+            for doc in documents:
+                try:
+                    app = self._document_to_entity(doc)
+                    applications.append(app)
+                except Exception as e:
+                    logger.error(f"Error convirtiendo documento: {e}")
+                    continue
+            
+            return applications
+            
+        except Exception as e:
+            logger.error(f"Error en búsqueda avanzada: {e}")
+            return []
+    
+    async def count_search_results(self, filters: Dict[str, Any]) -> int:
+        """Contar resultados de búsqueda avanzada"""
+        try:
+            mongo_query = self._build_mongo_query(filters)
+            return self.collection.count_documents(mongo_query)
+            
+        except Exception as e:
+            logger.error(f"Error contando resultados de búsqueda: {e}")
+            return 0

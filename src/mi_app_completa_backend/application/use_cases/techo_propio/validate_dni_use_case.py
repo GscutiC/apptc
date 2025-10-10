@@ -42,6 +42,7 @@ class ValidateDniUseCase:
     ) -> DniValidationResponseDTO:
         """
         Validar DNI completo con RENIEC
+        Si la consulta RENIEC es exitosa, el DNI es válido.
         
         Args:
             dto: Datos de validación de DNI
@@ -51,59 +52,79 @@ class ValidateDniUseCase:
         """
         
         # 1. Validar formato de DNI
-        format_validation = self._validate_dni_format(dto.document_number)
+        format_validation = self._validate_dni_format(dto.dni)
         if not format_validation.is_valid:
             return DniValidationResponseDTO(
-                document_number=dto.document_number,
+                dni=dto.dni,
                 is_valid=False,
-                validation_errors=format_validation.validation_errors,
-                person_data=None,
-                validated_at=datetime.now()
+                names=None,
+                paternal_surname=None,
+                maternal_surname=None,
+                full_name=None,
+                birth_date=None,
+                error_message="; ".join(format_validation.validation_errors or []),
+                validation_date=datetime.now()
             )
         
-        # 2. Consultar RENIEC
+        # 2. Consultar RENIEC usando query_document (método correcto)
         try:
-            reniec_result = await self.reniec_service.validate_person(dto.document_number)
+            reniec_result = await self.reniec_service.query_document(dto.dni)
             
-            if not reniec_result or not reniec_result.get('success', False):
+            # Si la consulta RENIEC es exitosa, el DNI es válido
+            if not reniec_result or not reniec_result.success:
+                error_msg = reniec_result.message if reniec_result else "DNI no encontrado en RENIEC"
                 return DniValidationResponseDTO(
-                    document_number=dto.document_number,
+                    dni=dto.dni,
                     is_valid=False,
-                    validation_errors=["DNI no encontrado en RENIEC"],
-                    person_data=None,
-                    validated_at=datetime.now()
+                    names=None,
+                    paternal_surname=None,
+                    maternal_surname=None,
+                    full_name=None,
+                    birth_date=None,
+                    error_message=error_msg,
+                    validation_date=datetime.now()
                 )
             
-            # 3. Extraer datos de persona
-            person_data = self._extract_person_data(reniec_result)
+            # 3. Extraer datos de persona desde la respuesta RENIEC
+            dni_data = reniec_result.data
             
-            # 4. Validar datos específicos si se proporcionan
-            validation_errors = []
-            if dto.expected_first_name or dto.expected_paternal_surname:
-                name_validation = self._validate_expected_names(person_data, dto)
-                if not name_validation.is_valid:
-                    validation_errors.extend(name_validation.validation_errors)
+            if not dni_data:
+                return DniValidationResponseDTO(
+                    dni=dto.dni,
+                    is_valid=False,
+                    names=None,
+                    paternal_surname=None,
+                    maternal_surname=None,
+                    full_name=None,
+                    birth_date=None,
+                    error_message="No se pudieron obtener datos de RENIEC",
+                    validation_date=datetime.now()
+                )
             
-            # 5. Validar edad para Techo Propio
-            age_validation = self._validate_age_for_program(person_data)
-            if not age_validation.is_valid:
-                validation_errors.extend(age_validation.validation_errors)
-            
+            # 4. Construir respuesta exitosa con datos de RENIEC
             return DniValidationResponseDTO(
-                document_number=dto.document_number,
-                is_valid=len(validation_errors) == 0,
-                validation_errors=validation_errors if validation_errors else None,
-                person_data=person_data,
-                validated_at=datetime.now()
+                dni=dni_data.dni,
+                is_valid=True,
+                names=dni_data.nombres,
+                paternal_surname=dni_data.apellido_paterno,
+                maternal_surname=dni_data.apellido_materno,
+                full_name=dni_data.apellidos,  # Nombre completo desde RENIEC
+                birth_date=dni_data.fecha_nacimiento,
+                error_message=None,
+                validation_date=datetime.now()
             )
             
         except Exception as e:
             return DniValidationResponseDTO(
-                document_number=dto.document_number,
+                dni=dto.dni,
                 is_valid=False,
-                validation_errors=[f"Error al consultar RENIEC: {str(e)}"],
-                person_data=None,
-                validated_at=datetime.now()
+                names=None,
+                paternal_surname=None,
+                maternal_surname=None,
+                full_name=None,
+                birth_date=None,
+                error_message=f"Error al consultar RENIEC: {str(e)}",
+                validation_date=datetime.now()
             )
     
     async def validate_applicant_data(
@@ -112,6 +133,7 @@ class ValidateDniUseCase:
     ) -> DniValidationResponseDTO:
         """
         Validar datos completos de solicitante
+        Simplificado: solo valida que el DNI exista en RENIEC
         
         Args:
             dto: Datos del solicitante para validar
@@ -120,54 +142,11 @@ class ValidateDniUseCase:
             DniValidationResponseDTO: Resultado de la validación
         """
         
-        # Crear request de validación de DNI
-        dni_request = DniValidationRequestDTO(
-            document_number=dto.document_number,
-            expected_first_name=dto.first_name,
-            expected_paternal_surname=dto.paternal_surname,
-            expected_maternal_surname=dto.maternal_surname
-        )
+        # Crear request de validación de DNI simple
+        dni_request = DniValidationRequestDTO(dni=dto.document_number)
         
-        # Ejecutar validación base
-        base_result = await self.validate_dni(dni_request)
-        
-        # Si la validación base falló, retornar resultado
-        if not base_result.is_valid:
-            return base_result
-        
-        # Validaciones adicionales para solicitante
-        additional_errors = []
-        
-        # Validar apellido materno si se proporciona
-        if dto.maternal_surname and base_result.person_data:
-            maternal_surname_reniec = base_result.person_data.get('maternal_surname', '').upper()
-            maternal_surname_provided = dto.maternal_surname.upper()
-            
-            if maternal_surname_reniec != maternal_surname_provided:
-                additional_errors.append(
-                    f"Apellido materno no coincide. RENIEC: '{maternal_surname_reniec}', "
-                    f"Proporcionado: '{maternal_surname_provided}'"
-                )
-        
-        # Validar fecha de nacimiento si se proporciona
-        if dto.birth_date and base_result.person_data:
-            birth_date_validation = self._validate_birth_date(
-                base_result.person_data.get('birth_date'),
-                dto.birth_date
-            )
-            if not birth_date_validation.is_valid:
-                additional_errors.extend(birth_date_validation.validation_errors)
-        
-        # Combinar errores
-        all_errors = (base_result.validation_errors or []) + additional_errors
-        
-        return DniValidationResponseDTO(
-            document_number=dto.document_number,
-            is_valid=len(all_errors) == 0,
-            validation_errors=all_errors if all_errors else None,
-            person_data=base_result.person_data,
-            validated_at=datetime.now()
-        )
+        # Ejecutar validación base (si RENIEC responde, es válido)
+        return await self.validate_dni(dni_request)
     
     async def batch_validate_dnis(
         self,
@@ -187,16 +166,20 @@ class ValidateDniUseCase:
         
         for dni in document_numbers:
             try:
-                request = DniValidationRequestDTO(document_number=dni)
+                request = DniValidationRequestDTO(dni=dni)
                 result = await self.validate_dni(request)
                 results[dni] = result
             except Exception as e:
                 results[dni] = DniValidationResponseDTO(
-                    document_number=dni,
+                    dni=dni,
                     is_valid=False,
-                    validation_errors=[f"Error en validación: {str(e)}"],
-                    person_data=None,
-                    validated_at=datetime.now()
+                    names=None,
+                    paternal_surname=None,
+                    maternal_surname=None,
+                    full_name=None,
+                    birth_date=None,
+                    error_message=f"Error en validación: {str(e)}",
+                    validation_date=datetime.now()
                 )
         
         return results

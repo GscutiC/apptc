@@ -13,7 +13,7 @@ from .query_applications_use_case import QueryApplicationsUseCase
 from .validate_dni_use_case import ValidateDniUseCase
 
 # Importar servicios
-from ...services.techo_propio.ubigeo_validation_service import UbigeoValidationService
+from ....infrastructure.services.government_apis.ubigeo_validation_service import UbigeoValidationService
 
 # Importar repositorio y servicios de infraestructura
 from ....domain.repositories.techo_propio import TechoPropioRepository
@@ -50,19 +50,18 @@ class TechoPropioUseCases:
     def __init__(
         self,
         repository: TechoPropioRepository,
-        reniec_service: ReniecService
+        reniec_service: ReniecService,
+        ubigeo_service: UbigeoValidationService
     ):
         self.repository = repository
         self.reniec_service = reniec_service
+        self.ubigeo_service = ubigeo_service
         
         # Inicializar casos de uso
         self.create_use_case = CreateApplicationUseCase(repository)
         self.update_use_case = UpdateApplicationUseCase(repository)
         self.query_use_case = QueryApplicationsUseCase(repository)
         self.validate_dni_use_case = ValidateDniUseCase(reniec_service)
-        
-        # Inicializar servicios
-        self.ubigeo_service = UbigeoValidationService()
     
     # ==================== OPERACIONES DE SOLICITUD ====================
     
@@ -325,13 +324,25 @@ class TechoPropioUseCases:
         """Obtener lista de departamentos"""
         return await self.ubigeo_service.get_departments()
     
+    async def get_departments_with_codes(self) -> List[Dict[str, str]]:
+        """Obtener lista de departamentos con códigos"""
+        return await self.ubigeo_service.get_departments_with_codes()
+    
     async def get_provinces(self, department: str) -> List[str]:
         """Obtener provincias de un departamento"""
         return await self.ubigeo_service.get_provinces(department)
     
+    async def get_provinces_with_codes(self, department: str) -> List[Dict[str, str]]:
+        """Obtener provincias de un departamento con códigos"""
+        return await self.ubigeo_service.get_provinces_with_codes(department)
+    
     async def get_districts(self, department: str, province: str) -> List[str]:
         """Obtener distritos de una provincia"""
         return await self.ubigeo_service.get_districts(department, province)
+    
+    async def get_districts_with_codes(self, department: str, province: str) -> List[Dict[str, str]]:
+        """Obtener distritos de una provincia con códigos"""
+        return await self.ubigeo_service.get_districts_with_codes(department, province)
     
     async def search_locations(
         self,
