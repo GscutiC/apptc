@@ -140,14 +140,14 @@ class QueryApplicationsUseCase:
         
         # Construir query de búsqueda
         search_query = self._build_search_query(filters)
-        
-        # Ejecutar búsqueda
+
+        # Ejecutar búsqueda (método sin palabra clave search_query)
         applications = await self.repository.search_applications(
-            search_query=search_query,
-            page=page,
-            page_size=page_size
+            search_query,  # Pasar como argumento posicional
+            page,
+            page_size
         )
-        
+
         # Contar total de resultados
         total_count = await self.repository.count_search_results(search_query)
         

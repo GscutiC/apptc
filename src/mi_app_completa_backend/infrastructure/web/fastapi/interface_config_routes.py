@@ -77,23 +77,20 @@ async def get_current_config_safe(
 
         # Si hay configuración en BD, devolverla
         if config:
-            logger.info("✅ Configuración obtenida desde MongoDB")
             return config
 
-        # 🆕 FALLBACK: Crear configuración por defecto en formato correcto
-        logger.warn("⚠️ No hay configuración en BD, creando configuración por defecto")
+        # FALLBACK: Crear configuración por defecto en formato correcto
+        logger.warn("No hay configuración en BD, creando configuración por defecto")
         
         # Crear configuración que coincida con el archivo interface_config.json del backend
         fallback_config = await use_cases.create_default_config()
         
-        logger.info("✅ Configuración por defecto creada y activada")
         return fallback_config
 
     except Exception as e:
         logger.error(f"Error getting safe config: {e}")
         
-        # 🚨 ÚLTIMO RECURSO: Configuración mínima de emergencia
-        logger.error("🚨 Devolviendo configuración de emergencia")
+        # ÚLTIMO RECURSO: Configuración mínima de emergencia
         return {
             "id": "emergency-config",
             "theme": {
@@ -148,7 +145,7 @@ async def get_current_config_safe(
                 "sidebarLogo": { "text": "Sistema", "showText": True, "showImage": False, "collapsedText": "S" }
             },
             "branding": {
-                "appName": "Sistema en Mantenimiento",
+                "appName": "App",
                 "appDescription": "Conectando con servidor...",
                 "tagline": "Cargando configuración",
                 "companyName": "Sistema",
@@ -196,9 +193,6 @@ async def update_partial_config(
         )
 
     try:
-        logger.info(f"Partial config update by admin: {current_user.email}")
-        logger.debug(f"Update payload keys: {list(updates.keys())}")
-
         # Obtener configuración actual
         current_config_dto = await use_cases.get_current_config()
         if not current_config_dto:
@@ -227,7 +221,6 @@ async def update_partial_config(
         if not updated_config:
             raise HTTPException(status_code=404, detail="Error actualizando configuración")
 
-        logger.info(f"✅ Configuration updated successfully by {current_user.email}")
         return updated_config
         
     except HTTPException:

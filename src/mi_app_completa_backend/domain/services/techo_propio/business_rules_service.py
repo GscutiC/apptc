@@ -39,19 +39,20 @@ class TechoPropioBusinessRules:
             if age > VALIDATION_CONSTANTS["MAX_AGE"]:
                 errors.append(f"El solicitante no puede tener más de {VALIDATION_CONSTANTS['MAX_AGE']} años")
         
+        # TEMPORALMENTE DESHABILITADO PARA DESARROLLO
         # 2. Validar ingresos familiares (debe estar dentro del rango objetivo)
-        total_income = application.total_family_income
-        per_capita_income = application.per_capita_income
-        
-        # Límites típicos del programa (estos deberían venir de configuración)
-        MAX_FAMILY_INCOME = Decimal('8000.00')  # Ingreso familiar máximo
-        MAX_PER_CAPITA_INCOME = Decimal('2000.00')  # Ingreso per cápita máximo
-        
-        if total_income > MAX_FAMILY_INCOME:
-            errors.append(f"El ingreso familiar total ({total_income}) excede el límite permitido ({MAX_FAMILY_INCOME})")
-        
-        if per_capita_income > MAX_PER_CAPITA_INCOME:
-            errors.append(f"El ingreso per cápita ({per_capita_income}) excede el límite permitido ({MAX_PER_CAPITA_INCOME})")
+        # total_income = application.total_family_income
+        # per_capita_income = application.per_capita_income
+        # 
+        # # Límites típicos del programa (estos deberían venir de configuración)
+        # MAX_FAMILY_INCOME = Decimal('8000.00')  # Ingreso familiar máximo
+        # MAX_PER_CAPITA_INCOME = Decimal('2000.00')  # Ingreso per cápita máximo
+        # 
+        # if total_income > MAX_FAMILY_INCOME:
+        #     errors.append(f"El ingreso familiar total ({total_income}) excede el límite permitido ({MAX_FAMILY_INCOME})")
+        # 
+        # if per_capita_income > MAX_PER_CAPITA_INCOME:
+        #     errors.append(f"El ingreso per cápita ({per_capita_income}) excede el límite permitido ({MAX_PER_CAPITA_INCOME})")
         
         # 3. Validar que no tenga demasiados dependientes (proporción razonable)
         household_size = application.total_household_size

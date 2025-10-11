@@ -101,7 +101,7 @@ class HouseholdMemberCreateDTO(BaseModel):
     occupation: str = Field(..., min_length=2, max_length=200)  # ✅ NUEVO - Ocupación
     employment_situation: EmploymentSituation  # ✅ NUEVO - Dependiente/Independiente
     work_condition: WorkCondition  # ✅ NUEVO - Formal/Informal (era employment_condition en frontend)
-    monthly_income: Decimal = Field(..., gt=0, le=50000)  # ✅ NUEVO - Ingreso mensual
+    monthly_income: Decimal = Field(..., ge=0, le=50000)  # ✅ NUEVO - Ingreso mensual (permite 0)
     disability_type: DisabilityType = DisabilityType.NONE
     relationship: Optional[FamilyRelationship] = None  # ✅ MODIFICADO - Ahora opcional
     is_dependent: bool = True
@@ -124,11 +124,46 @@ class HouseholdMemberCreateDTO(BaseModel):
             raise ValueError('La edad no puede ser mayor a 100 años')
         return v
 
+    @validator('work_condition', pre=True)
+    def normalize_work_condition(cls, v):
+        """Normalizar work_condition para aceptar mayúsculas y minúsculas"""
+        if isinstance(v, str):
+            v_lower = v.lower()
+            # Mapear valores conocidos
+            if v_lower in ['formal', 'informal']:
+                return v_lower
+            # Si viene en mayúsculas, convertir a minúsculas
+            if v.upper() in ['FORMAL', 'INFORMAL']:
+                return v.lower()
+        return v
+
+    @validator('civil_status', pre=True)
+    def normalize_civil_status(cls, v):
+        """Normalizar civil_status para aceptar variaciones"""
+        if isinstance(v, str):
+            v_lower = v.lower()
+            # Mapear valores conocidos
+            valid_values = ['soltero', 'casado', 'divorciado', 'viudo', 'conviviente']
+            if v_lower in valid_values:
+                return v_lower
+        return v
+
+    @validator('employment_situation', pre=True)
+    def normalize_employment_situation(cls, v):
+        """Normalizar employment_situation para aceptar variaciones"""
+        if isinstance(v, str):
+            v_lower = v.lower()
+            # Mapear valores conocidos
+            valid_values = ['dependiente', 'independiente', 'desempleado', 'jubilado', 'estudiante']
+            if v_lower in valid_values:
+                return v_lower
+        return v
+
 
 class EconomicInfoCreateDTO(BaseModel):
     """DTO para crear información económica"""
     employment_situation: EmploymentSituation
-    monthly_income: Decimal = Field(..., gt=0, le=50000)
+    monthly_income: Decimal = Field(..., ge=0, le=50000)
     work_condition: Optional[WorkCondition] = None
     occupation_detail: Optional[str] = Field(None, max_length=200)
     employer_name: Optional[str] = Field(None, max_length=150)
@@ -308,6 +343,11 @@ class HouseholdMemberResponseDTO(BaseModel):
     relationship: FamilyRelationship
     education_level: Optional[EducationLevel]
     disability_type: DisabilityType
+    civil_status: CivilStatus
+    occupation: Optional[str]
+    employment_situation: EmploymentSituation
+    work_condition: WorkCondition
+    monthly_income: float
     is_dependent: bool
 
     class Config:
@@ -437,6 +477,7 @@ class DniValidationResponseDTO(BaseModel):
 
 class ApplicationSearchFiltersDTO(BaseModel):
     """DTO para filtros de búsqueda de solicitudes"""
+    search_term: Optional[str] = None  # Búsqueda por texto libre
     status: Optional[ApplicationStatus] = None
     department: Optional[str] = None
     province: Optional[str] = None
@@ -449,11 +490,18 @@ class ApplicationSearchFiltersDTO(BaseModel):
     date_to: Optional[date] = None
     min_income: Optional[Decimal] = None
     max_income: Optional[Decimal] = None
+    min_monthly_income: Optional[Decimal] = None  # Alias para compatibilidad
+    max_monthly_income: Optional[Decimal] = None  # Alias para compatibilidad
     min_household_size: Optional[int] = None
     max_household_size: Optional[int] = None
+    min_household_members: Optional[int] = None  # Alias para compatibilidad
+    max_household_members: Optional[int] = None  # Alias para compatibilidad
+    has_spouse: Optional[bool] = None
     has_disability: Optional[bool] = None
     priority_level: Optional[str] = None  # 'high', 'medium', 'low'
-    
+    min_priority_score: Optional[float] = None
+    max_priority_score: Optional[float] = None
+
     # Paginación
     page: int = Field(1, ge=1)
     page_size: int = Field(20, ge=1, le=100)

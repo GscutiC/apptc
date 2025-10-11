@@ -51,7 +51,9 @@ class TechoPropioApplication(TechoPropioBaseEntity):
     
     # Metadata adicional
     user_id: str = None  # ID del usuario que creó la solicitud (Clerk ID)
+    updated_by: Optional[str] = None  # ID del usuario que actualizó por última vez
     version: int = 1  # Control de versiones
+    priority_score: float = 0.0  # ✅ Puntaje de priorización calculado
     
     def __post_init__(self):
         """Validaciones post-inicialización"""

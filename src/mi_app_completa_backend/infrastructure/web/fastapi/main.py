@@ -13,7 +13,8 @@ from ....infrastructure.config.database import DatabaseConfig
 from ....infrastructure.config.settings import get_settings
 from .auth_routes import router as auth_router
 from .interface_config_routes import router as interface_config_router
-from .contextual_config_routes import router as contextual_config_router
+# DESHABILITADO: Sistema contextual causa conflictos
+# from .contextual_config_routes import router as contextual_config_router
 from .file_routes import router as file_router
 from .government_routes import router as government_router
 from ....domain.entities.auth_models import User
@@ -54,8 +55,8 @@ app.include_router(auth_router, prefix="/auth", tags=["authentication"])
 # Incluir rutas de configuración de interfaz
 app.include_router(interface_config_router)
 
-# Incluir rutas de configuración contextual (FASE 3)
-app.include_router(contextual_config_router)
+# DESHABILITADO: Sistema contextual causa conflictos con interface_configurations
+# app.include_router(contextual_config_router)
 
 # Incluir rutas de archivos
 app.include_router(file_router)
