@@ -4,11 +4,13 @@ Maneja búsquedas, filtros y consultas especializadas
 """
 
 from typing import Optional, List, Dict, Any
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import logging
 from bson import ObjectId
 from pymongo import ASCENDING, DESCENDING
+from ...config.timezone_config import lima_now
 from pymongo.collection import Collection
+from motor.motor_asyncio import AsyncIOMotorCollection
 
 from .mappers import ApplicationMapper
 from ....domain.entities.techo_propio import TechoPropioApplication
@@ -20,35 +22,33 @@ logger = logging.getLogger(__name__)
 class MongoQueryRepository:
     """Repositorio para consultas complejas y búsquedas"""
     
-    def __init__(self, collection: Collection):
+    def __init__(self, collection: AsyncIOMotorCollection):
         """
         Inicializar repositorio de consultas
         
         Args:
-            collection: Colección MongoDB para solicitudes Techo Propio
+            collection: Colección MongoDB asíncrona para solicitudes Techo Propio
         """
         self.collection = collection
     
     async def get_applications_by_user(
         self,
         user_id: str,
-        status_filter: Optional[ApplicationStatus] = None,
-        page: int = 1,
-        page_size: int = 20
+        status: Optional[ApplicationStatus] = None,
+        limit: int = 50,
+        offset: int = 0
     ) -> List[TechoPropioApplication]:
         """Obtener solicitudes de un usuario"""
         try:
             query = {"created_by": user_id}
             
-            if status_filter:
-                query["status"] = status_filter.value
+            if status:
+                query["status"] = status.value
             
-            skip = (page - 1) * page_size
-            
-            cursor = self.collection.find(query).skip(skip).limit(page_size).sort("created_at", -1)
+            cursor = self.collection.find(query).skip(offset).limit(limit).sort("created_at", -1)
             
             applications = []
-            for document in cursor:
+            async for document in cursor:
                 applications.append(ApplicationMapper.from_dict(document))
             
             return applications
@@ -60,22 +60,17 @@ class MongoQueryRepository:
     async def get_applications_by_status(
         self,
         status: ApplicationStatus,
-        page: int = 1,
-        page_size: int = 20,
-        sort_by: str = "created_at",
-        sort_order: str = "desc"
+        limit: int = 50,
+        offset: int = 0
     ) -> List[TechoPropioApplication]:
         """Obtener solicitudes por estado"""
         try:
             query = {"status": status.value}
             
-            skip = (page - 1) * page_size
-            sort_direction = DESCENDING if sort_order == "desc" else ASCENDING
-            
-            cursor = self.collection.find(query).skip(skip).limit(page_size).sort(sort_by, sort_direction)
+            cursor = self.collection.find(query).skip(offset).limit(limit).sort("created_at", DESCENDING)
             
             applications = []
-            for document in cursor:
+            async for document in cursor:
                 applications.append(ApplicationMapper.from_dict(document))
             
             return applications
@@ -108,7 +103,7 @@ class MongoQueryRepository:
             cursor = self.collection.find(query).skip(skip).limit(page_size).sort("created_at", -1)
             
             applications = []
-            for document in cursor:
+            async for document in cursor:
                 applications.append(ApplicationMapper.from_dict(document))
             
             return applications
@@ -135,7 +130,7 @@ class MongoQueryRepository:
             cursor = self.collection.find(query).skip(skip).limit(page_size).sort("priority_score", -1)
             
             applications = []
-            for document in cursor:
+            async for document in cursor:
                 applications.append(ApplicationMapper.from_dict(document))
             
             return applications
@@ -161,7 +156,7 @@ class MongoQueryRepository:
             cursor = self.collection.find(mongo_query).skip(skip).limit(page_size).sort(sort_by, sort_order)
             
             applications = []
-            for document in cursor:
+            async for document in cursor:
                 applications.append(ApplicationMapper.from_dict(document))
             
             return applications
@@ -288,3 +283,210 @@ class MongoQueryRepository:
             mongo_query["priority_score"] = priority_filter
         
         return mongo_query
+    
+    async def get_pending_review_applications(
+        self,
+        reviewer_id: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes pendientes de revisión"""
+        try:
+            query = {"status": ApplicationStatus.SUBMITTED.value}
+            
+            if reviewer_id:
+                query["assigned_reviewer"] = reviewer_id
+            
+            cursor = self.collection.find(query).skip(offset).limit(limit).sort("submitted_at", ASCENDING)
+            
+            applications = []
+            async for document in cursor:
+                applications.append(ApplicationMapper.from_dict(document))
+            
+            return applications
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo solicitudes pendientes de revisión: {e}")
+            return []
+
+    async def count_applications_by_user(
+        self, 
+        user_id: str,
+        status: Optional[ApplicationStatus] = None
+    ) -> int:
+        """Contar solicitudes de un usuario"""
+        try:
+            query = {"created_by": user_id}
+            
+            if status:
+                query["status"] = status.value
+            
+            return await self.collection.count_documents(query)
+            
+        except Exception as e:
+            logger.error(f"Error contando solicitudes del usuario {user_id}: {e}")
+            return 0
+
+    async def count_applications_by_status(self, status: ApplicationStatus) -> int:
+        """Contar solicitudes por estado"""
+        try:
+            query = {"status": status.value}
+            return await self.collection.count_documents(query)
+            
+        except Exception as e:
+            logger.error(f"Error contando solicitudes por estado {status}: {e}")
+            return 0
+
+    async def get_applications_by_department(
+        self,
+        department: str,
+        status: Optional[ApplicationStatus] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes por departamento"""
+        try:
+            query = {"contact_information.department": department}
+            
+            if status:
+                query["status"] = status.value
+            
+            cursor = self.collection.find(query).skip(offset).limit(limit).sort("created_at", -1)
+            
+            applications = []
+            async for document in cursor:
+                applications.append(ApplicationMapper.from_dict(document))
+            
+            return applications
+        except Exception as e:
+            logger.error(f"Error obteniendo solicitudes por departamento {department}: {e}")
+            return []
+
+    async def get_applications_by_district(
+        self,
+        department: str,
+        province: str,
+        district: str,
+        status: Optional[ApplicationStatus] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes por distrito específico"""
+        try:
+            query = {
+                "contact_information.department": department,
+                "contact_information.province": province,
+                "contact_information.district": district
+            }
+            
+            if status:
+                query["status"] = status.value
+            
+            cursor = self.collection.find(query).skip(offset).limit(limit).sort("created_at", -1)
+            
+            applications = []
+            async for document in cursor:
+                applications.append(ApplicationMapper.from_dict(document))
+            
+            return applications
+        except Exception as e:
+            logger.error(f"Error obteniendo solicitudes por distrito {district}: {e}")
+            return []
+
+    async def get_applications_by_household_size(
+        self,
+        min_size: int,
+        max_size: Optional[int] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes por tamaño de familia"""
+        try:
+            query = {"household_information.household_size": {"$gte": min_size}}
+            
+            if max_size:
+                query["household_information.household_size"]["$lte"] = max_size
+            
+            cursor = self.collection.find(query).skip(offset).limit(limit).sort("created_at", -1)
+            
+            applications = []
+            async for document in cursor:
+                applications.append(ApplicationMapper.from_dict(document))
+            
+            return applications
+        except Exception as e:
+            logger.error(f"Error obteniendo solicitudes por tamaño de familia: {e}")
+            return []
+
+    async def get_applications_by_income_range(
+        self,
+        min_income: float,
+        max_income: Optional[float] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes por rango de ingresos"""
+        try:
+            query = {"economic_information.monthly_income": {"$gte": min_income}}
+            
+            if max_income:
+                query["economic_information.monthly_income"]["$lte"] = max_income
+            
+            cursor = self.collection.find(query).skip(offset).limit(limit).sort("created_at", -1)
+            
+            applications = []
+            async for document in cursor:
+                applications.append(ApplicationMapper.from_dict(document))
+            
+            return applications
+        except Exception as e:
+            logger.error(f"Error obteniendo solicitudes por rango de ingresos: {e}")
+            return []
+
+    async def get_applications_submitted_today(self) -> List[TechoPropioApplication]:
+        """Obtener solicitudes enviadas hoy"""
+        try:
+            today = lima_now().replace(hour=0, minute=0, second=0, microsecond=0)
+            tomorrow = today.replace(hour=23, minute=59, second=59, microsecond=999999)
+            
+            query = {
+                "submitted_at": {
+                    "$gte": today,
+                    "$lte": tomorrow
+                }
+            }
+            
+            cursor = self.collection.find(query).sort("submitted_at", -1)
+            
+            applications = []
+            async for document in cursor:
+                applications.append(ApplicationMapper.from_dict(document))
+            
+            return applications
+        except Exception as e:
+            logger.error(f"Error obteniendo solicitudes de hoy: {e}")
+            return []
+
+    async def get_expired_draft_applications(
+        self,
+        days_old: int = 30
+    ) -> List[TechoPropioApplication]:
+        """Obtener borradores expirados"""
+        try:
+            cutoff_date = lima_now() - timedelta(days=days_old)
+            
+            query = {
+                "status": ApplicationStatus.DRAFT.value,
+                "created_at": {"$lt": cutoff_date}
+            }
+            
+            cursor = self.collection.find(query).sort("created_at", 1)
+            
+            applications = []
+            async for document in cursor:
+                applications.append(ApplicationMapper.from_dict(document))
+            
+            return applications
+        except Exception as e:
+            logger.error(f"Error obteniendo borradores expirados: {e}")
+            return []

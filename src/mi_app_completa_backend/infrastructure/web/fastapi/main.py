@@ -1,7 +1,10 @@
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 import os
 from typing import List
+import logging
 from ....application.use_cases.create_user import CreateUserUseCase
 from ....application.use_cases.process_ai_message import ProcessAIMessageUseCase, GetWelcomeMessageUseCase
 from ....application.dto.user_dto import CreateUserDTO, UserResponseDTO
@@ -23,6 +26,9 @@ from ....domain.value_objects.auth_decorators import (
     verify_active_user, verify_permission, verify_role
 )
 
+# Configurar logger
+logger = logging.getLogger(__name__)
+
 # Obtener configuración centralizada
 settings = get_settings()
 
@@ -31,6 +37,38 @@ app = FastAPI(
     description="API con arquitectura hexagonal usando python y mongodb",
     version="1.0.0"
 )
+
+# 🐛 Manejador global de errores de validación (422)
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Captura errores de validación de Pydantic (422) y los registra en detalle
+    """
+    errors = exc.errors()
+    logger.error(f"❌ Error de validación 422 en {request.method} {request.url.path}")
+    logger.error(f"📋 Detalles de errores de validación:")
+    
+    for error in errors:
+        logger.error(f"  - Campo: {' -> '.join(str(loc) for loc in error['loc'])}")
+        logger.error(f"    Tipo: {error['type']}")
+        logger.error(f"    Mensaje: {error['msg']}")
+        if 'ctx' in error:
+            logger.error(f"    Contexto: {error['ctx']}")
+    
+    # Intentar leer el body de la request
+    try:
+        body = await request.body()
+        logger.error(f"📦 Body recibido (raw): {body.decode('utf-8')[:1000]}")  # Primeros 1000 chars
+    except Exception as e:
+        logger.error(f"No se pudo leer el body: {e}")
+    
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": errors,
+            "message": "Error de validación en los datos enviados"
+        }
+    )
 
 # Configurar CORS usando configuración centralizada
 app.add_middleware(

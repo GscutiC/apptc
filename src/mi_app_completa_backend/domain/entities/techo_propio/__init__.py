@@ -9,6 +9,7 @@ from .property_entity import PropertyInfo
 from .household_entity import HouseholdMember
 from .economic_entity import EconomicInfo
 from .application_entity import TechoPropioApplication
+from .convocation_entity import Convocation
 
 __all__ = [
     'TechoPropioBaseEntity',
@@ -16,5 +17,6 @@ __all__ = [
     'PropertyInfo', 
     'HouseholdMember',
     'EconomicInfo',
-    'TechoPropioApplication'
+    'TechoPropioApplication',
+    'Convocation'
 ]

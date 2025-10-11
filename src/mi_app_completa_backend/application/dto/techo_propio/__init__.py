@@ -45,6 +45,21 @@ from .ubigeo_validation_dto import (
     BulkUbigeoValidationResponseDTO
 )
 
+# ✅ NUEVOS DTOs de convocatorias
+from .convocation_dto import (
+    ConvocationCreateDTO,
+    ConvocationUpdateDTO,
+    ConvocationQueryDTO,
+    ConvocationResponseDTO,
+    ConvocationListResponseDTO,
+    ConvocationStatisticsDTO,
+    ConvocationGeneralStatsDTO,
+    ConvocationOptionDTO,
+    ConvExtendDeadlineDTO,
+    ConvBulkOperationDTO,
+    ConvBulkOperationResultDTO,
+)
+
 __all__ = [
     # DTOs de creación
     'ApplicantCreateDTO',
@@ -84,5 +99,18 @@ __all__ = [
     'LocationSearchResultDTO',
     'UbigeoStatisticsDTO',
     'BulkUbigeoValidationRequestDTO',
-    'BulkUbigeoValidationResponseDTO'
+    'BulkUbigeoValidationResponseDTO',
+    
+    # ✅ DTOs de convocatorias
+    'ConvocationCreateDTO',
+    'ConvocationUpdateDTO',
+    'ConvocationQueryDTO',
+    'ConvocationResponseDTO',
+    'ConvocationListResponseDTO',
+    'ConvocationStatisticsDTO',
+    'ConvocationGeneralStatsDTO',
+    'ConvocationOptionDTO',
+    'ConvExtendDeadlineDTO',
+    'ConvBulkOperationDTO',
+    'ConvBulkOperationResultDTO'
 ]

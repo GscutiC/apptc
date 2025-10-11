@@ -29,6 +29,12 @@ class TechoPropioApplication(TechoPropioBaseEntity):
     application_number: Optional[str] = None  # Número de solicitud generado automáticamente
     status: ApplicationStatus = ApplicationStatus.DRAFT
     
+    # ✅ NUEVOS CAMPOS: Información de registro y seguimiento
+    registration_date: Optional[datetime] = None  # Fecha de registro de la solicitud
+    convocation_code: Optional[str] = None  # Código de convocatoria (ej: "CONV-2025-01")
+    registration_year: Optional[int] = None  # Año de registro (derivado de registration_date)
+    sequential_number: Optional[int] = None  # Número secuencial dentro del año
+    
     # Entidades relacionadas
     main_applicant: Applicant = None  # Jefe de familia
     spouse: Optional[Applicant] = None  # Cónyuge/conviviente
@@ -51,6 +57,7 @@ class TechoPropioApplication(TechoPropioBaseEntity):
     
     # Metadata adicional
     user_id: str = None  # ID del usuario que creó la solicitud (Clerk ID)
+    created_by: Optional[str] = None  # ✅ ID del usuario que creó la entidad (para auditoría)
     updated_by: Optional[str] = None  # ID del usuario que actualizó por última vez
     version: int = 1  # Control de versiones
     priority_score: float = 0.0  # ✅ Puntaje de priorización calculado
@@ -58,6 +65,15 @@ class TechoPropioApplication(TechoPropioBaseEntity):
     def __post_init__(self):
         """Validaciones post-inicialización"""
         super().__init__()
+        
+        # ✅ NUEVA LÓGICA: Auto-generar campos de registro si no existen
+        if not self.registration_date:
+            self.registration_date = datetime.now()
+        
+        if not self.registration_year:
+            self.registration_year = self.registration_date.year if self.registration_date else datetime.now().year
+            
+        # Validaciones existentes
         if self.main_applicant:
             self._validate_main_applicant()
         if self.spouse:
@@ -177,12 +193,26 @@ class TechoPropioApplication(TechoPropioBaseEntity):
             self.main_applicant_economic is not None
         )
     
-    def generate_application_number(self) -> str:
-        """Generar número de solicitud único"""
+    def generate_application_number(self, sequential_number: Optional[int] = None) -> str:
+        """
+        Generar número de solicitud único
+        Formato: TP-YYYY-XXXXXX (TP = Techo Propio, YYYY = año, XXXXXX = secuencial)
+        """
         if self.application_number:
             return self.application_number
+        
+        year = self.registration_year or datetime.now().year
+        
+        # Si no se proporciona número secuencial, usar timestamp
+        if sequential_number is None:
+            # Usar timestamp como fallback (últimos 6 dígitos)
+            timestamp = int(datetime.now().timestamp())
+            sequential_number = timestamp % 1000000
             
-        # Formato: TP-YYYY-MM-XXXXXX (TP = Techo Propio)
+        self.sequential_number = sequential_number
+        self.application_number = f"TP-{year}-{sequential_number:06d}"
+        
+        return self.application_number
         now = datetime.utcnow()
         prefix = f"TP-{now.year}-{now.month:02d}"
         

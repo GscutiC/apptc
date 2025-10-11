@@ -201,13 +201,15 @@ class CreateApplicationUseCase:
         # Crear solicitud principal
         application = TechoPropioApplication(
             status=ApplicationStatus.DRAFT,
+            convocation_code=dto.convocation_code,  # ✅ Agregar código de convocatoria
             main_applicant=main_applicant,
             spouse=spouse,
             property_info=property_info,
             household_members=household_members,
             main_applicant_economic=main_economic,
             spouse_economic=spouse_economic,
-            user_id=user_id,
+            user_id=user_id,  # ✅ FIX: Usar user_id en lugar de created_by
+            created_by=user_id,  # ✅ Para auditoría
             updated_by=user_id
         )
         
@@ -372,6 +374,13 @@ class CreateApplicationUseCase:
             id=application.id,
             application_number=application.application_number,
             status=application.status,
+            
+            # ✅ NUEVOS CAMPOS: Información de registro
+            registration_date=application.registration_date,
+            convocation_code=application.convocation_code,
+            registration_year=application.registration_year,
+            sequential_number=application.sequential_number,
+            
             main_applicant=main_applicant_dto,
             property_info=property_dto,
             main_applicant_economic=main_economic_dto,

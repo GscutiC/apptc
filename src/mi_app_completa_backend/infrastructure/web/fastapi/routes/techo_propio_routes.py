@@ -8,11 +8,11 @@ manteniendo compatibilidad completa con el sistema existente
 
 from fastapi import APIRouter
 
-# Importar router modular refactorizado
-from .techo_propio import router as techo_propio_router
+# Importar router modular refactorizado  
+from .techo_propio import router as techo_propio_module_router
 
-# Crear router principal que incluye todos los sub-módulos
-router = APIRouter(prefix="/api/v1/techo-propio", tags=["Techo Propio"])
+# Crear router principal que incluye todos los sub-módulos  
+router = APIRouter(prefix="/api/techo-propio", tags=["Techo Propio"])
 
 # Endpoint de salud del módulo principal
 @router.get("/health")
@@ -33,4 +33,4 @@ async def health_check():
     }
 
 # Incluir el router modular refactorizado
-router.include_router(techo_propio_router)
+router.include_router(techo_propio_module_router)

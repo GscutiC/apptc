@@ -75,18 +75,18 @@ class QueryApplicationsUseCase:
     async def get_applications_by_user(
         self,
         user_id: str,
-        status_filter: Optional[ApplicationStatus] = None,
-        page: int = 1,
-        page_size: int = 20
+        status: Optional[ApplicationStatus] = None,
+        limit: int = 50,
+        offset: int = 0
     ) -> PaginatedResponseDTO[TechoPropioApplicationResponseDTO]:
         """
         Obtener solicitudes de un usuario específico
         
         Args:
             user_id: ID del usuario
-            status_filter: Filtro por estado (opcional)
-            page: Número de página
-            page_size: Tamaño de página
+            status: Filtro por estado (opcional)
+            limit: Número máximo de resultados
+            offset: Desplazamiento
             
         Returns:
             PaginatedResponseDTO con las solicitudes del usuario
@@ -95,15 +95,15 @@ class QueryApplicationsUseCase:
         # Obtener aplicaciones del usuario
         applications = await self.repository.get_applications_by_user(
             user_id=user_id,
-            status_filter=status_filter,
-            page=page,
-            page_size=page_size
+            status=status,
+            limit=limit,
+            offset=offset
         )
         
         # Contar total
         total_count = await self.repository.count_applications_by_user(
             user_id=user_id,
-            status_filter=status_filter
+            status=status
         )
         
         # Convertir a DTOs
@@ -112,12 +112,16 @@ class QueryApplicationsUseCase:
             dto = await self.create_use_case._convert_to_response_dto(application)
             items.append(dto)
         
+        # Calcular paginación
+        page = (offset // limit) + 1 if limit > 0 else 1
+        total_pages = (total_count + limit - 1) // limit if limit > 0 else 1
+        
         return PaginatedResponseDTO(
             items=items,
             total_count=total_count,
             page=page,
-            page_size=page_size,
-            total_pages=(total_count + page_size - 1) // page_size
+            page_size=limit,
+            total_pages=total_pages
         )
     
     async def search_applications(

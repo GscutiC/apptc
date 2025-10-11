@@ -10,6 +10,7 @@ import logging
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from pymongo.collection import Collection
 from pymongo.errors import PyMongoError
+from motor.motor_asyncio import AsyncIOMotorCollection
 
 # Importar entidades de dominio
 from ....domain.entities.techo_propio import TechoPropioApplication
@@ -51,15 +52,17 @@ class MongoTechoPropioRepository(TechoPropioRepository):
             db_client: Cliente MongoDB (opcional, se obtiene de configuración si no se proporciona)
         """
         self.db = get_database() if db_client is None else db_client.get_database()
-        self.collection: Collection = self.db.techo_propio_applications
+        self.collection: AsyncIOMotorCollection = self.db.techo_propio_applications
         
         # Inicializar repositorios especializados
         self.crud_repo = MongoCRUDRepository(self.collection)
         self.query_repo = MongoQueryRepository(self.collection)
         self.stats_repo = MongoStatisticsRepository(self.collection)
         
-        # Crear índices necesarios
-        self._create_indexes()
+        # NOTA: Los índices deben crearse una sola vez manualmente o mediante migración
+        # No se pueden crear síncronamente en el constructor con AsyncIOMotorCollection
+        # self._create_indexes()
+        logger.info("Repositorio MongoDB inicializado (índices deben crearse por separado)")
     
     def _create_indexes(self) -> None:
         """Crear índices para optimizar consultas"""
@@ -151,26 +154,24 @@ class MongoTechoPropioRepository(TechoPropioRepository):
     async def get_applications_by_user(
         self,
         user_id: str,
-        status_filter: Optional[ApplicationStatus] = None,
-        page: int = 1,
-        page_size: int = 20
+        status: Optional[ApplicationStatus] = None,
+        limit: int = 50,
+        offset: int = 0
     ) -> List[TechoPropioApplication]:
         """Obtener solicitudes de usuario (delegado a Query repo)"""
         return await self.query_repo.get_applications_by_user(
-            user_id, status_filter, page, page_size
+            user_id, status, limit, offset
         )
     
     async def get_applications_by_status(
         self,
         status: ApplicationStatus,
-        page: int = 1,
-        page_size: int = 20,
-        sort_by: str = "created_at",
-        sort_order: str = "desc"
+        limit: int = 50,
+        offset: int = 0
     ) -> List[TechoPropioApplication]:
         """Obtener solicitudes por estado (delegado a Query repo)"""
         return await self.query_repo.get_applications_by_status(
-            status, page, page_size, sort_by, sort_order
+            status, limit, offset
         )
     
     async def get_applications_by_location(
@@ -232,14 +233,14 @@ class MongoTechoPropioRepository(TechoPropioRepository):
     async def count_applications_by_user(
         self,
         user_id: str,
-        status_filter: Optional[ApplicationStatus] = None
+        status: Optional[ApplicationStatus] = None
     ) -> int:
-        """Contar solicitudes de usuario (delegado a Stats repo)"""
-        return await self.stats_repo.count_applications_by_user(user_id, status_filter)
+        """Contar solicitudes de usuario (delegado a Query repo)"""
+        return await self.query_repo.count_applications_by_user(user_id, status)
     
     async def count_applications_by_status(self, status: ApplicationStatus) -> int:
-        """Contar solicitudes por estado (delegado a Stats repo)"""
-        return await self.stats_repo.count_applications_by_status(status)
+        """Contar solicitudes por estado (delegado a Query repo)"""
+        return await self.query_repo.count_applications_by_status(status)
     
     async def count_applications_by_location(
         self,
@@ -314,6 +315,125 @@ class MongoTechoPropioRepository(TechoPropioRepository):
             return 0
     
     # ==================== MÉTODOS DE UTILIDAD ====================
+    
+    # ==================== MÉTODOS FALTANTES PARA COMPLETAR INTERFAZ ABSTRACTA ====================
+    
+    async def check_application_number_exists(self, application_number: str) -> bool:
+        """Verificar si un número de solicitud ya existe"""
+        try:
+            count = await self.collection.count_documents({
+                "application_number": application_number
+            })
+            return count > 0
+        except Exception as e:
+            logger.error(f"Error verificando número de solicitud {application_number}: {e}")
+            return False
+    
+    async def get_application_history(self, application_id: str) -> List[Dict[str, Any]]:
+        """Obtener historial de cambios de una solicitud"""
+        try:
+            # Por simplicidad, retornamos historial vacío
+            # En producción, esto debería consultar una colección de auditoría
+            return []
+        except Exception as e:
+            logger.error(f"Error obteniendo historial de solicitud {application_id}: {e}")
+            return []
+    
+    async def get_applications_by_department(
+        self,
+        department: str,
+        status: Optional[ApplicationStatus] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes por departamento (delegado a Query repo)"""
+        return await self.query_repo.get_applications_by_department(
+            department, status, limit, offset
+        )
+    
+    async def get_applications_by_district(
+        self,
+        department: str,
+        province: str,
+        district: str,
+        status: Optional[ApplicationStatus] = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes por distrito específico (delegado a Query repo)"""
+        return await self.query_repo.get_applications_by_district(
+            department, province, district, status, limit, offset
+        )
+    
+    async def get_applications_by_household_size(
+        self,
+        min_size: int,
+        max_size: Optional[int] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes por tamaño de familia (delegado a Query repo)"""
+        return await self.query_repo.get_applications_by_household_size(
+            min_size, max_size, limit, offset
+        )
+    
+    async def get_applications_by_income_range(
+        self,
+        min_income: float,
+        max_income: Optional[float] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes por rango de ingresos (delegado a Query repo)"""
+        return await self.query_repo.get_applications_by_income_range(
+            min_income, max_income, limit, offset
+        )
+    
+    async def get_applications_submitted_today(self) -> List[TechoPropioApplication]:
+        """Obtener solicitudes enviadas hoy (delegado a Query repo)"""
+        return await self.query_repo.get_applications_submitted_today()
+    
+    async def get_expired_draft_applications(
+        self,
+        days_old: int = 30
+    ) -> List[TechoPropioApplication]:
+        """Obtener borradores expirados para limpieza (delegado a Query repo)"""
+        return await self.query_repo.get_expired_draft_applications(days_old)
+    
+    async def get_pending_review_applications(
+        self,
+        reviewer_id: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[TechoPropioApplication]:
+        """Obtener solicitudes pendientes de revisión (delegado a Query repo)"""
+        return await self.query_repo.get_pending_review_applications(
+            reviewer_id, limit, offset
+        )
+    
+    async def log_application_change(
+        self,
+        application_id: str,
+        user_id: str,
+        action: str,
+        old_values: Optional[Dict[str, Any]] = None,
+        new_values: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """Registrar cambio en solicitud para auditoría"""
+        try:
+            # Por simplicidad, solo loggeamos. En producción se guardaría en colección de auditoría
+            logger.info(f"Application {application_id} - Action: {action} by User: {user_id}")
+            if old_values:
+                logger.info(f"Old values: {old_values}")
+            if new_values:
+                logger.info(f"New values: {new_values}")
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error registrando cambio de solicitud: {e}")
+            return False
+    
+    # ==================== MÉTODO DE SALUD MANTENIDO ====================
     
     def get_health_status(self) -> Dict[str, Any]:
         """Obtener estado de salud del repositorio"""

@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime, date
 import logging
 from pymongo.collection import Collection
+from motor.motor_asyncio import AsyncIOMotorCollection
 
 from ....domain.value_objects.techo_propio import ApplicationStatus
 
@@ -16,12 +17,12 @@ logger = logging.getLogger(__name__)
 class MongoStatisticsRepository:
     """Repositorio para estadísticas y reportes"""
     
-    def __init__(self, collection: Collection):
+    def __init__(self, collection: AsyncIOMotorCollection):
         """
         Inicializar repositorio de estadísticas
         
         Args:
-            collection: Colección MongoDB para solicitudes Techo Propio
+            collection: Colección MongoDB asíncrona para solicitudes Techo Propio
         """
         self.collection = collection
     

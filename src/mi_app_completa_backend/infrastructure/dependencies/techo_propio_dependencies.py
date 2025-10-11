@@ -12,6 +12,7 @@ from ..persistence.mongodb.ubigeo_repository_impl import MongoUbigeoRepository
 
 # Importar casos de uso
 from ...application.use_cases.techo_propio import TechoPropioUseCases
+from ...application.use_cases.techo_propio.convocation_management_use_cases import ConvocationManagementUseCases
 
 # Importar servicios
 from ..services.government_apis.reniec_service import ReniecService
@@ -20,12 +21,15 @@ from ..services.government_apis.ubigeo_validation_service import UbigeoValidatio
 # Importar configuración de base de datos
 from ..config.database import get_database
 
+# Importar repositorio de convocatorias MongoDB
+from ..persistence.mongo_convocation_repository import MongoConvocationRepository
 
-@lru_cache()
+
 def get_mongo_techo_propio_repository() -> MongoTechoPropioRepository:
     """
     Crear instancia del repositorio MongoDB
-    Se cachea para reutilizar la misma instancia
+    NOTA: No usar @lru_cache porque causa problemas con AsyncIOMotorCollection
+    en contextos async. Cada llamada crea una nueva instancia.
     """
     return MongoTechoPropioRepository()
 
@@ -39,7 +43,6 @@ def get_mongo_ubigeo_repository() -> MongoUbigeoRepository:
     return MongoUbigeoRepository(db)
 
 
-@lru_cache()
 def get_reniec_service() -> ReniecService:
     """
     Obtener instancia del servicio RENIEC
@@ -72,6 +75,15 @@ def get_techo_propio_use_cases(
         reniec_service=reniec_service,
         ubigeo_service=ubigeo_service
     )
+
+
+def get_convocation_use_cases() -> ConvocationManagementUseCases:
+    """
+    Crear instancia de casos de uso de convocatorias
+    Usando MongoDB para persistencia real
+    """
+    mongo_repo = MongoConvocationRepository()
+    return ConvocationManagementUseCases(repository=mongo_repo)
 
 
 # Función auxiliar para limpiar cache en tests

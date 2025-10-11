@@ -24,6 +24,18 @@
 - **Quick Functions**: Funciones de una línea para casos de uso simples
 - **Batch Queries**: Consultas masivas con manejo automático de errores
 
+### 🏠 **Módulo Techo Propio** (Gestión de Convocatorias)
+- **CRUD Completo**: Creación, lectura, actualización y eliminación de convocatorias
+- **Sistema de Estados**: Control de activación, publicación y visibilidad
+- **Filtrado Avanzado**: Por estado, región, año, fechas de inicio/fin
+- **Paginación**: Listado optimizado con límites configurables
+- **Validación de Documentos**: Integración con RENIEC para validación de DNI
+- **Gestión de Fechas**: Control preciso de plazos y períodos de inscripción
+- **Arquitectura Limpia**: Implementación completa con Clean Architecture
+- **13 Endpoints REST**: API completa para gestión de convocatorias
+- **Sistema de Auditoría**: Trazabilidad de cambios en convocatorias
+- **Testing Automatizado**: Suite completa de tests unitarios e integración
+
 ### 📁 **Gestión Avanzada de Archivos**
 - **Subida y almacenamiento** de archivos (logos, imágenes, documentos)
 - **Metadatos completos** y categorización inteligente
@@ -57,24 +69,43 @@
 ```
 src/mi_app_completa_backend/
 ├── domain/                 # 🎯 Lógica de negocio pura
-│   ├── entities/          # User, File, AuditLog, Role, GovernmentAPIs
-│   │   └── government_apis/  # 🏛️ Entidades de APIs Gubernamentales
-│   │       ├── base_entity.py        # BaseResponse, DocumentType, APIProvider
-│   │       ├── reniec_entity.py      # DniData, DniConsultaResponse
-│   │       └── sunat_entity.py       # RucData, RucConsultaResponse
+│   ├── entities/          # User, File, AuditLog, Role, GovernmentAPIs, Techo Propio
+│   │   ├── government_apis/  # 🏛️ Entidades de APIs Gubernamentales
+│   │   │   ├── base_entity.py        # BaseResponse, DocumentType, APIProvider
+│   │   │   ├── reniec_entity.py      # DniData, DniConsultaResponse
+│   │   │   └── sunat_entity.py       # RucData, RucConsultaResponse
+│   │   └── techo_propio/  # 🏠 Entidades de Techo Propio
+│   │       └── convocation_entity.py  # Convocation con lógica de negocio
 │   ├── repositories/      # Interfaces abstractas
+│   │   ├── government/   # Repositorios de APIs Gubernamentales
+│   │   └── techo_propio/ # Repositorios de Techo Propio
+│   │       └── convocation_repository.py  # Interface para convocatorias
 │   ├── services/          # Servicios de dominio
 │   └── value_objects/     # Permisos, roles, excepciones
 ├── application/           # 📋 Casos de uso
 │   ├── use_cases/        # Lógica de aplicación específica
-│   │   └── government_queries.py  # GovernmentQueriesUseCase (orquestador)
+│   │   ├── government_queries.py  # GovernmentQueriesUseCase (orquestador)
+│   │   └── techo_propio/  # 🏠 Casos de uso de Techo Propio
+│   │       ├── convocation_management_use_cases.py  # CRUD + Operaciones
+│   │       └── validate_dni_use_case.py             # Validación DNI
 │   └── dto/              # Data Transfer Objects
-│       └── government_dto.py  # DTOs para requests/responses
+│       ├── government_dto.py  # DTOs para requests/responses
+│       └── techo_propio/  # 🏠 DTOs de Techo Propio
+│           └── convocation_dto.py  # Create, Update, Response DTOs
 └── infrastructure/       # 🔧 Adaptadores externos
     ├── persistence/      # Implementaciones MongoDB
+    │   ├── government/   # Repositorios de APIs Gubernamentales
+    │   ├── techo_propio/ # 🏠 Repositorios de Techo Propio
+    │   │   ├── mongo_convocation_repository.py  # Implementación MongoDB
+    │   │   ├── mongo_crud_repository.py         # CRUD genérico
+    │   │   └── mongo_query_repository.py        # Consultas complejas
+    │   └── mongo_convocation_repository.py  # Repositorio principal
     ├── web/             # APIs REST con FastAPI
     │   └── fastapi/
-    │       └── government_routes.py  # Endpoints REST con auth
+    │       └── routes/
+    │           ├── government_routes.py  # Endpoints REST con auth
+    │           └── techo_propio/  # 🏠 Rutas de Techo Propio
+    │               └── convocation_routes.py  # 13 endpoints REST
     ├── services/        # Servicios externos modulares
     │   ├── government_apis/  # 🏛️ Módulo APIs Gubernamentales
     │   │   ├── base_government_api.py   # Abstract base class
@@ -83,6 +114,7 @@ src/mi_app_completa_backend/
     │   │   └── government_factory.py    # Factory para servicios
     │   └── government_helper.py  # 🚀 Helper service (uso simplificado)
     └── config/          # Configuración del sistema
+        └── settings.py  # Configuración centralizada con Pydantic
 ```
 
 ## 🛠️ Stack Tecnológico
@@ -240,6 +272,31 @@ pytest tests/integration/
 - **Frontend**: `docs/FRONTEND_INTEGRATION.md`
 - **Ejemplos Python**: `examples/government_apis_usage.py`
 
+### **Gestión de Convocatorias - Techo Propio** 🏠 (Requiere Autenticación)
+- `POST /api/techo-propio/convocations/` - Crear nueva convocatoria
+  - Body: `{ title, description, region, year, requirements, budget, start_date, end_date }`
+- `GET /api/techo-propio/convocations/` - Listar convocatorias (paginado + filtros)
+  - Params: `skip, limit, is_active, is_published, region, year`
+- `GET /api/techo-propio/convocations/{id}` - Obtener convocatoria por ID
+- `PUT /api/techo-propio/convocations/{id}` - Actualizar convocatoria completa
+- `PATCH /api/techo-propio/convocations/{id}` - Actualización parcial
+- `DELETE /api/techo-propio/convocations/{id}` - Eliminar convocatoria
+- `POST /api/techo-propio/convocations/{id}/activate` - Activar convocatoria
+- `POST /api/techo-propio/convocations/{id}/deactivate` - Desactivar convocatoria
+- `POST /api/techo-propio/convocations/{id}/publish` - Publicar convocatoria
+- `POST /api/techo-propio/convocations/{id}/unpublish` - Despublicar convocatoria
+- `GET /api/techo-propio/convocations/filter/active` - Solo convocatorias activas
+- `GET /api/techo-propio/convocations/filter/published` - Solo convocatorias publicadas
+- `GET /api/techo-propio/convocations/test` - Test de conectividad
+
+**Documentación Técnica:**
+- **Índice Maestro**: `docs/techo_propio/TECHO_PROPIO_INDICE_MAESTRO.md`
+- **Resumen Ejecutivo**: `docs/techo_propio/TECHO_PROPIO_RESUMEN_EJECUTIVO.md`
+- **Análisis Completo**: `docs/techo_propio/TECHO_PROPIO_CONVOCATORIAS_ANALISIS.md`
+- **Guía de Testing**: `docs/techo_propio/TECHO_PROPIO_TESTING_EXAMPLES.md`
+- **README del Módulo**: `docs/techo_propio/README_TECHO_PROPIO.md`
+- **Script de Testing**: `test_convocation_crud.ps1` (11 tests automatizados)
+
 ### **Gestión de Archivos**
 - `POST /api/files/upload` - Subir archivo
 - `GET /api/files/{file_id}` - Obtener archivo
@@ -273,6 +330,11 @@ ENVIRONMENT=development
 DEBUG=true
 CORS_ORIGINS=http://localhost:3000,http://localhost:3001
 UPLOAD_MAX_SIZE=10485760  # 10MB
+
+# Zona Horaria (Perú - Lima UTC-5)
+# Nota: El sistema utiliza datetime timezone-aware para fechas precisas
+# Todas las fechas se almacenan en UTC y se convierten a Lima cuando es necesario
+TIMEZONE=America/Lima
 ```
 
 ### **Estructura de Logs**
@@ -307,6 +369,19 @@ Este proyecto está bajo la Licencia MIT. Ver `LICENSE` para más detalles.
 - **📖 Documentación Técnica**: `docs/GOVERNMENT_APIS_MODULE.md`
 - **🌐 Integración Frontend**: `docs/FRONTEND_INTEGRATION.md`
 - **💻 Ejemplos Python**: `examples/government_apis_usage.py`
+
+### **Módulo Techo Propio** 🏠
+- **📑 Índice Maestro**: `docs/techo_propio/TECHO_PROPIO_INDICE_MAESTRO.md`
+- **📊 Resumen Ejecutivo**: `docs/techo_propio/TECHO_PROPIO_RESUMEN_EJECUTIVO.md`
+- **🔍 Análisis Completo**: `docs/techo_propio/TECHO_PROPIO_CONVOCATORIAS_ANALISIS.md`
+- **✅ Guía de Testing**: `docs/techo_propio/TECHO_PROPIO_TESTING_EXAMPLES.md`
+- **📘 README del Módulo**: `docs/techo_propio/README_TECHO_PROPIO.md`
+- **🧪 Script de Testing**: `test_convocation_crud.ps1` (11 tests automatizados)
+
+### **Configuración del Sistema**
+- **⚙️ Configuración y Despliegue**: `CONFIGURACION_Y_DESPLIEGUE.md`
+- **📈 Estado del Proyecto**: `STATUS_PROYECTO.md`
+- **🕐 Configuración de Timezone**: Ver sección "Zona Horaria" en variables de entorno
 
 ### **Contacto**
 - **Issues**: Crear issue en el repositorio

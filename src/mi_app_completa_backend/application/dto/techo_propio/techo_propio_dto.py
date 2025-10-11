@@ -202,6 +202,11 @@ class EconomicInfoCreateDTO(BaseModel):
 
 class TechoPropioApplicationCreateDTO(BaseModel):
     """DTO para crear solicitud completa Techo Propio"""
+    
+    # ✅ NUEVOS CAMPOS: Información de registro
+    convocation_code: str = Field(..., min_length=5, max_length=50, description="Código de convocatoria")
+    
+    # Campos existentes
     main_applicant: ApplicantCreateDTO
     property_info: PropertyInfoCreateDTO
     main_applicant_economic: EconomicInfoCreateDTO
@@ -379,6 +384,14 @@ class TechoPropioApplicationResponseDTO(BaseModel):
     id: str
     application_number: Optional[str]
     status: ApplicationStatus
+    
+    # ✅ NUEVOS CAMPOS: Información de registro
+    registration_date: Optional[datetime] = Field(description="Fecha de registro de la solicitud")
+    convocation_code: Optional[str] = Field(description="Código de convocatoria")
+    registration_year: Optional[int] = Field(description="Año de registro")
+    sequential_number: Optional[int] = Field(description="Número secuencial")
+    
+    # Campos existentes
     main_applicant: ApplicantResponseDTO
     property_info: PropertyInfoResponseDTO
     main_applicant_economic: EconomicInfoResponseDTO

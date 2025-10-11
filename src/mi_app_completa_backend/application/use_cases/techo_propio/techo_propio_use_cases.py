@@ -131,13 +131,13 @@ class TechoPropioUseCases:
     async def get_applications_by_user(
         self,
         user_id: str,
-        status_filter: Optional[ApplicationStatus] = None,
-        page: int = 1,
-        page_size: int = 20
+        status: Optional[ApplicationStatus] = None,
+        limit: int = 50,
+        offset: int = 0
     ) -> PaginatedResponseDTO[TechoPropioApplicationResponseDTO]:
         """Obtener solicitudes de un usuario"""
         return await self.query_use_case.get_applications_by_user(
-            user_id, status_filter, page, page_size
+            user_id, status, limit, offset
         )
     
     async def search_applications(
@@ -238,7 +238,7 @@ class TechoPropioUseCases:
         else:
             # Estadísticas de usuario
             if user_id:
-                user_apps = await self.get_applications_by_user(user_id, page_size=100)
+                user_apps = await self.get_applications_by_user(user_id, limit=100)
                 summary["user_total_applications"] = user_apps.total_count
                 
                 # Contar por estado
@@ -251,7 +251,7 @@ class TechoPropioUseCases:
                 
                 # Aplicaciones recientes del usuario
                 recent_user_apps = await self.get_applications_by_user(
-                    user_id, page=1, page_size=3
+                    user_id, limit=3
                 )
                 summary["user_recent_applications"] = recent_user_apps.items
         

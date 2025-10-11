@@ -7,6 +7,9 @@ from typing import Optional, Dict, Any
 from dataclasses import dataclass
 from datetime import datetime, date
 
+# Importar configuración de timezone
+from ....infrastructure.config.timezone_config import lima_now
+
 # Importar servicios existentes
 from ....infrastructure.services.government_apis.reniec_service import ReniecService
 
@@ -63,7 +66,7 @@ class ValidateDniUseCase:
                 full_name=None,
                 birth_date=None,
                 error_message="; ".join(format_validation.validation_errors or []),
-                validation_date=datetime.now()
+                validation_date=lima_now()
             )
         
         # 2. Consultar RENIEC usando query_document (método correcto)
@@ -82,7 +85,7 @@ class ValidateDniUseCase:
                     full_name=None,
                     birth_date=None,
                     error_message=error_msg,
-                    validation_date=datetime.now()
+                    validation_date=lima_now()
                 )
             
             # 3. Extraer datos de persona desde la respuesta RENIEC
@@ -98,7 +101,7 @@ class ValidateDniUseCase:
                     full_name=None,
                     birth_date=None,
                     error_message="No se pudieron obtener datos de RENIEC",
-                    validation_date=datetime.now()
+                    validation_date=lima_now()
                 )
             
             # 4. Construir respuesta exitosa con datos de RENIEC
@@ -111,7 +114,7 @@ class ValidateDniUseCase:
                 full_name=dni_data.apellidos,  # Nombre completo desde RENIEC
                 birth_date=dni_data.fecha_nacimiento,
                 error_message=None,
-                validation_date=datetime.now()
+                validation_date=lima_now()
             )
             
         except Exception as e:
@@ -124,7 +127,7 @@ class ValidateDniUseCase:
                 full_name=None,
                 birth_date=None,
                 error_message=f"Error al consultar RENIEC: {str(e)}",
-                validation_date=datetime.now()
+                validation_date=lima_now()
             )
     
     async def validate_applicant_data(
@@ -179,7 +182,7 @@ class ValidateDniUseCase:
                     full_name=None,
                     birth_date=None,
                     error_message=f"Error en validación: {str(e)}",
-                    validation_date=datetime.now()
+                    validation_date=lima_now()
                 )
         
         return results
@@ -222,7 +225,7 @@ class ValidateDniUseCase:
             'address': data.get('direccion', ''),
             'restriction': data.get('restriccion', ''),
             'photo_url': data.get('foto', ''),
-            'verified_at': datetime.now().isoformat()
+            'verified_at': lima_now().isoformat()
         }
     
     def _validate_expected_names(

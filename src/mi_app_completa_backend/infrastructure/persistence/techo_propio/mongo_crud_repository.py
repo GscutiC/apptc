@@ -8,7 +8,9 @@ from datetime import datetime
 import logging
 from bson import ObjectId
 from pymongo.collection import Collection
+from ...config.timezone_config import utc_now
 from pymongo.errors import DuplicateKeyError, PyMongoError
+from motor.motor_asyncio import AsyncIOMotorCollection
 
 from .mappers import ApplicationMapper
 from ....domain.entities.techo_propio import TechoPropioApplication
@@ -20,12 +22,12 @@ logger = logging.getLogger(__name__)
 class MongoCRUDRepository:
     """Repositorio para operaciones CRUD básicas"""
     
-    def __init__(self, collection: Collection):
+    def __init__(self, collection: AsyncIOMotorCollection):
         """
         Inicializar repositorio CRUD
         
         Args:
-            collection: Colección MongoDB para solicitudes Techo Propio
+            collection: Colección MongoDB asíncrona para solicitudes Techo Propio
         """
         self.collection = collection
     
@@ -49,7 +51,7 @@ class MongoCRUDRepository:
             # Si hay conflicto de índice único, generar nuevo documento
             # con timestamp para diferenciarlo
             import time
-            document["created_at"] = datetime.now()
+            document["created_at"] = utc_now()
             document["dev_timestamp"] = int(time.time())
             
             try:
@@ -115,7 +117,7 @@ class MongoCRUDRepository:
                 {
                     "$set": {
                         "status": ApplicationStatus.CANCELLED.value,
-                        "deleted_at": datetime.now(),
+                        "deleted_at": utc_now(),
                         "is_deleted": True
                     }
                 }

@@ -42,19 +42,28 @@ class MongoUbigeoRepository:
             cursor = self.collection.aggregate(pipeline)
             departments = await cursor.to_list(length=None)
             
-            logger.info(f"📍 Obtenidos {len(departments)} departamentos")
+            logger.info(f"Obtenidos {len(departments)} departamentos")
             return departments
             
         except Exception as e:
-            logger.error(f"❌ Error obteniendo departamentos: {e}")
+            logger.error(f"Error obteniendo departamentos: {e}")
             raise
     
-    async def get_provinces(self, department_name: str) -> List[Dict[str, str]]:
-        """Obtener provincias de un departamento específico"""
+    async def get_provinces(self, department_code_or_name: str) -> List[Dict[str, str]]:
+        """Obtener provincias de un departamento específico (por código o nombre)"""
         try:
+            # Determinar si es código (2 dígitos) o nombre
+            department_filter = {}
+            if department_code_or_name.isdigit() and len(department_code_or_name) == 2:
+                # Es un código de departamento (ej: "10")
+                department_filter = {"$expr": {"$eq": [{"$substr": ["$ubigeo_code", 0, 2]}, department_code_or_name.zfill(2)]}}
+            else:
+                # Es un nombre de departamento (ej: "HUANUCO")
+                department_filter = {"department": department_code_or_name.upper().strip()}
+            
             pipeline = [
                 {
-                    "$match": {"department": department_name.upper().strip()}
+                    "$match": department_filter
                 },
                 {
                     "$group": {
@@ -79,22 +88,45 @@ class MongoUbigeoRepository:
             cursor = self.collection.aggregate(pipeline)
             provinces = await cursor.to_list(length=None)
             
-            logger.info(f"🏛️ Obtenidas {len(provinces)} provincias para {department_name}")
+            logger.info(f"Obtenidas {len(provinces)} provincias para {department_code_or_name}")
             return provinces
             
         except Exception as e:
-            logger.error(f"❌ Error obteniendo provincias para {department_name}: {e}")
+            logger.error(f"Error obteniendo provincias para {department_code_or_name}: {e}")
             raise
     
-    async def get_districts(self, department_name: str, province_name: str) -> List[Dict[str, str]]:
-        """Obtener distritos de una provincia específica"""
+    async def get_districts(self, department_code_or_name: str, province_code_or_name: str) -> List[Dict[str, str]]:
+        """Obtener distritos de una provincia específica (por código o nombre)"""
         try:
+            # Crear filtros según si son códigos o nombres
+            match_filter = {}
+            
+            # Determinar filtro de departamento
+            if department_code_or_name.isdigit() and len(department_code_or_name) == 2:
+                # Es código de departamento
+                match_filter["$expr"] = {"$eq": [{"$substr": ["$ubigeo_code", 0, 2]}, department_code_or_name.zfill(2)]}
+            else:
+                # Es nombre de departamento
+                match_filter["department"] = department_code_or_name.upper().strip()
+            
+            # Determinar filtro de provincia  
+            if province_code_or_name.isdigit() and len(province_code_or_name) == 4:
+                # Es código de provincia (ej: "1001")
+                if not match_filter.get("$expr"):
+                    match_filter["$expr"] = {"$eq": [{"$substr": ["$ubigeo_code", 0, 4]}, province_code_or_name.zfill(4)]}
+                else:
+                    # Ya hay filtro de departamento por código, agregar filtro de provincia
+                    match_filter["$expr"] = {"$and": [
+                        match_filter["$expr"],
+                        {"$eq": [{"$substr": ["$ubigeo_code", 0, 4]}, province_code_or_name.zfill(4)]}
+                    ]}
+            else:
+                # Es nombre de provincia
+                match_filter["province"] = province_code_or_name.upper().strip()
+            
             pipeline = [
                 {
-                    "$match": {
-                        "department": department_name.upper().strip(),
-                        "province": province_name.upper().strip()
-                    }
+                    "$match": match_filter
                 },
                 {
                     "$project": {
@@ -112,11 +144,11 @@ class MongoUbigeoRepository:
             cursor = self.collection.aggregate(pipeline)
             districts = await cursor.to_list(length=None)
             
-            logger.info(f"🏘️ Obtenidos {len(districts)} distritos para {department_name}/{province_name}")
+            logger.info(f"Obtenidos {len(districts)} distritos para {department_code_or_name}/{province_code_or_name}")
             return districts
             
         except Exception as e:
-            logger.error(f"❌ Error obteniendo distritos para {department_name}/{province_name}: {e}")
+            logger.error(f"Error obteniendo distritos para {department_code_or_name}/{province_code_or_name}: {e}")
             raise
     
     async def search_locations(self, search_term: str, limit: int = 10) -> List[Dict[str, str]]:
@@ -157,11 +189,11 @@ class MongoUbigeoRepository:
             cursor = self.collection.aggregate(pipeline)
             locations = await cursor.to_list(length=None)
             
-            logger.info(f"🔍 Encontradas {len(locations)} ubicaciones para '{search_term}'")
+            logger.info(f"Encontradas {len(locations)} ubicaciones para '{search_term}'")
             return locations
             
         except Exception as e:
-            logger.error(f"❌ Error buscando ubicaciones: {e}")
+            logger.error(f"Error buscando ubicaciones: {e}")
             raise
     
     async def get_location_by_ubigeo(self, ubigeo_code: str) -> Optional[Dict[str, str]]:
@@ -173,14 +205,14 @@ class MongoUbigeoRepository:
             )
             
             if location:
-                logger.info(f"📍 Ubicación encontrada para UBIGEO {ubigeo_code}")
+                logger.info(f"Ubicación encontrada para UBIGEO {ubigeo_code}")
             else:
-                logger.warning(f"⚠️ No se encontró ubicación para UBIGEO {ubigeo_code}")
+                logger.warning(f"No se encontró ubicación para UBIGEO {ubigeo_code}")
             
             return location
             
         except Exception as e:
-            logger.error(f"❌ Error obteniendo ubicación por UBIGEO {ubigeo_code}: {e}")
+            logger.error(f"Error obteniendo ubicación por UBIGEO {ubigeo_code}: {e}")
             raise
     
     async def validate_ubigeo_hierarchy(self, department: str, province: str, district: str) -> bool:
@@ -193,11 +225,11 @@ class MongoUbigeoRepository:
             })
             
             is_valid = count > 0
-            logger.info(f"✅ Jerarquía {department}/{province}/{district} {'válida' if is_valid else 'inválida'}")
+            logger.info(f"Jerarquía {department}/{province}/{district} {'válida' if is_valid else 'inválida'}")
             return is_valid
             
         except Exception as e:
-            logger.error(f"❌ Error validando jerarquía: {e}")
+            logger.error(f"Error validando jerarquía: {e}")
             raise
     
     async def get_statistics(self) -> Dict[str, int]:
@@ -218,5 +250,5 @@ class MongoUbigeoRepository:
             return stats
             
         except Exception as e:
-            logger.error(f"❌ Error obteniendo estadísticas: {e}")
+            logger.error(f"Error obteniendo estadísticas: {e}")
             raise

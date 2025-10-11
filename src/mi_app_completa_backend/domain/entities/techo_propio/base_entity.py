@@ -14,7 +14,9 @@ class TechoPropioBaseEntity(BaseEntity):
     
     def __init__(self, entity_id: Optional[str] = None, created_by: Optional[str] = None):
         super().__init__(entity_id)
-        self.created_by = created_by or "system"
+        # ✅ FIX: Solo usar "system" si NO se proporciona created_by
+        # En producción, created_by SIEMPRE debe ser el user_id real
+        self.created_by = created_by  # No usar fallback automático a "system"
         self.module = "techo_propio"  # Identificador del módulo
         
     def get_audit_info(self) -> dict:

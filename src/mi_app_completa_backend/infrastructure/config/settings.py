@@ -39,9 +39,30 @@ class Settings(BaseSettings):
     max_upload_size: int = Field(default=10485760, description="Tamaño máximo de archivo (10MB)")
     rate_limit_per_minute: int = Field(default=100, description="Límite de requests por minuto")
     
+    # Zona Horaria
+    timezone: str = Field(
+        default="America/Lima",
+        description="Zona horaria del sistema (Perú - UTC-5)"
+    )
+    
     def get_cors_origins_list(self) -> List[str]:
         """Obtener CORS origins como lista"""
         return [origin.strip() for origin in self.cors_origins.split(',') if origin.strip()]
+    
+    def get_timezone(self):
+        """
+        Obtener objeto ZoneInfo de la configuración de zona horaria
+        
+        Returns:
+            ZoneInfo: Objeto de zona horaria configurado
+            
+        Example:
+            >>> settings = Settings()
+            >>> tz = settings.get_timezone()
+            >>> print(tz)  # America/Lima
+        """
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(self.timezone)
     
     @field_validator('debug', mode='before')
     @classmethod
@@ -134,3 +155,16 @@ def is_debug_mode() -> bool:
 def get_cors_origins() -> List[str]:
     """Obtener orígenes CORS permitidos"""
     return settings.get_cors_origins_list()
+
+def get_system_timezone():
+    '''
+    Obtener la zona horaria configurada del sistema
+    
+    Returns:
+        ZoneInfo: Zona horaria del sistema (por defecto America/Lima)
+        
+    Example:
+        >>> tz = get_system_timezone()
+        >>> print(tz)  # America/Lima
+    '''
+    return settings.get_timezone()
