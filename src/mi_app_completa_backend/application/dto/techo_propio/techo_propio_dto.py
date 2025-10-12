@@ -198,6 +198,24 @@ class EconomicInfoCreateDTO(BaseModel):
         return values
 
 
+# ===== DTO PARA DATOS DE USUARIO (CONTROL INTERNO) =====
+
+class UserDataDTO(BaseModel):
+    """DTO para datos de usuario - Solo para control interno, NO va en la solicitud"""
+    dni: str = Field(..., min_length=8, max_length=8)
+    names: str = Field(..., min_length=2, max_length=100)  
+    surnames: str = Field(..., min_length=2, max_length=100)
+    phone: Optional[str] = Field(None, min_length=7, max_length=15)
+    email: Optional[str] = Field(None, pattern=r'^[\w\.-]+@[\w\.-]+\.\w+$')
+    birth_date: Optional[date] = None
+    notes: Optional[str] = Field(None, max_length=500)  # Notas internas
+
+    @validator('dni')
+    def validate_dni(cls, v):
+        if not v.isdigit() or len(v) != 8:
+            raise ValueError('DNI debe tener exactamente 8 dígitos')
+        return v
+
 # ===== DTOs DE SOLICITUD COMPLETA =====
 
 class TechoPropioApplicationCreateDTO(BaseModel):
@@ -206,10 +224,13 @@ class TechoPropioApplicationCreateDTO(BaseModel):
     # ✅ NUEVOS CAMPOS: Información de registro
     convocation_code: str = Field(..., min_length=5, max_length=50, description="Código de convocatoria")
     
-    # Campos existentes
-    main_applicant: ApplicantCreateDTO
+    # ✅ NUEVA LÓGICA: Datos de usuario separados (control interno)
+    user_data: UserDataDTO = Field(..., description="Datos del usuario para control interno")
+    
+    # ✅ CAMBIO: main_applicant ahora es head_of_family (jefe de familia real)
+    head_of_family: ApplicantCreateDTO = Field(..., description="Jefe de familia (va en la solicitud)")
     property_info: PropertyInfoCreateDTO
-    main_applicant_economic: EconomicInfoCreateDTO
+    head_of_family_economic: EconomicInfoCreateDTO = Field(..., description="Info económica del jefe de familia")
     spouse: Optional[ApplicantCreateDTO] = None
     spouse_economic: Optional[EconomicInfoCreateDTO] = None
     household_members: List[HouseholdMemberCreateDTO] = Field(default_factory=list)
@@ -217,22 +238,28 @@ class TechoPropioApplicationCreateDTO(BaseModel):
     @model_validator(mode='before')
     @classmethod
     def validate_application_consistency(cls, values):
-        main_applicant = values.get('main_applicant')
+        head_of_family = values.get('head_of_family')
         spouse = values.get('spouse')
         spouse_economic = values.get('spouse_economic')
         household_members = values.get('household_members', [])
+        user_data = values.get('user_data')
+        
+        # ✅ VALIDACIÓN: Debe tener jefe de familia
+        if not head_of_family:
+            raise ValueError('El jefe de familia es obligatorio')
+        
+        # ✅ VALIDACIÓN: Debe tener datos de usuario
+        if not user_data:
+            raise ValueError('Los datos del usuario son obligatorios')
         
         # Validar consistencia de cónyuge
-        if spouse and not main_applicant:
-            raise ValueError('No puede tener cónyuge sin solicitante principal')
-        
         if spouse:
-            if spouse.is_main_applicant:
-                raise ValueError('El cónyuge no puede ser marcado como solicitante principal')
+            if spouse.get('is_main_applicant', False):
+                raise ValueError('El cónyuge no puede ser marcado como jefe de familia')
             
-            # Verificar que el solicitante esté casado o conviviendo
-            if main_applicant and main_applicant.civil_status not in [CivilStatus.MARRIED, CivilStatus.COHABITING]:
-                raise ValueError('Solo solicitantes casados o convivientes pueden incluir cónyuge')
+            # Verificar que el jefe de familia esté casado o conviviendo
+            if head_of_family and head_of_family.get('civil_status') not in [CivilStatus.MARRIED, CivilStatus.COHABITING]:
+                raise ValueError('Solo jefes de familia casados o convivientes pueden incluir cónyuge')
         
         # Si tiene cónyuge, debe tener información económica del cónyuge
         if spouse and not spouse_economic:
@@ -246,21 +273,44 @@ class TechoPropioApplicationCreateDTO(BaseModel):
         if len(household_members) > max_members:
             raise ValueError(f'No se pueden registrar más de {max_members} miembros familiares')
         
-        # Validar DNIs únicos
+        # ✅ VALIDAR DNIs ÚNICOS: Incluir datos de usuario, jefe de familia, cónyuge y carga familiar
+        # ✅ PERMITIR duplicación entre user_data y head_of_family (mismo solicitante)
         all_dnis = set()
-        if main_applicant:
-            # En mode='before', los objetos son diccionarios
-            main_dni = main_applicant.get('document_number') if isinstance(main_applicant, dict) else main_applicant.document_number
-            all_dnis.add(main_dni)
+        head_family_dni = None
+        
+        # DNI del usuario (control interno) 
+        if user_data and user_data.get('dni'):
+            user_dni = user_data['dni']
+            all_dnis.add(user_dni)
+        
+        # DNI del jefe de familia (head_of_family)
+        head_family_dni = None
+        if head_of_family and head_of_family.get('document_number'):
+            head_family_dni = head_of_family['document_number']
+            # ✅ PERMITIR que user_data y head_of_family tengan el mismo DNI (mismo solicitante)
+            if head_family_dni in all_dnis:
+                # Solo es error si NO es el mismo DNI del usuario
+                if user_data and user_data.get('dni') != head_family_dni:
+                    raise ValueError(f'DNI duplicado: {head_family_dni}')
+            all_dnis.add(head_family_dni)
+        
+        # DNI del cónyuge
         if spouse:
             spouse_dni = spouse.get('document_number') if isinstance(spouse, dict) else spouse.document_number
             if spouse_dni in all_dnis:
                 raise ValueError(f'DNI duplicado: {spouse_dni}')
             all_dnis.add(spouse_dni)
         
+        # DNIs de carga familiar
         for member in household_members:
             member_dni = member.get('document_number') if isinstance(member, dict) else member.document_number
             if member_dni in all_dnis:
+                # ✅ PERMITIR que el jefe de familia aparezca también en household_members
+                if head_family_dni and member_dni == head_family_dni:
+                    continue  # Permitir duplicación del jefe de familia
+                # ✅ PERMITIR que el usuario (control interno) aparezca en household_members 
+                if user_data and user_data.get('dni') == member_dni:
+                    continue  # Permitir duplicación del usuario
                 raise ValueError(f'DNI duplicado: {member_dni}')
             all_dnis.add(member_dni)
         
@@ -269,9 +319,10 @@ class TechoPropioApplicationCreateDTO(BaseModel):
 
 class TechoPropioApplicationUpdateDTO(BaseModel):
     """DTO para actualizar solicitud existente"""
-    main_applicant: Optional[ApplicantCreateDTO] = None
+    user_data: Optional[UserDataDTO] = None
+    head_of_family: Optional[ApplicantCreateDTO] = None
     property_info: Optional[PropertyInfoCreateDTO] = None
-    main_applicant_economic: Optional[EconomicInfoCreateDTO] = None
+    head_of_family_economic: Optional[EconomicInfoCreateDTO] = None
     spouse: Optional[ApplicantCreateDTO] = None
     spouse_economic: Optional[EconomicInfoCreateDTO] = None
     household_members: Optional[List[HouseholdMemberCreateDTO]] = None
@@ -285,6 +336,17 @@ class TechoPropioApplicationUpdateDTO(BaseModel):
 
 
 # ===== DTOs DE RESPUESTA =====
+
+class UserDataResponseDTO(BaseModel):
+    """DTO de respuesta para datos de usuario - Solo para control interno"""
+    dni: str
+    names: str
+    surnames: str
+    full_name: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    birth_date: Optional[date] = None
+    notes: Optional[str] = None
 
 class ApplicantResponseDTO(BaseModel):
     """DTO de respuesta para solicitante"""
@@ -304,6 +366,10 @@ class ApplicantResponseDTO(BaseModel):
     is_main_applicant: bool
     phone_number: Optional[str]
     email: Optional[str]
+
+    # ✅ NUEVO: Dirección actual (se copia desde property_info para compatibilidad con frontend)
+    current_address: Optional[Dict[str, Any]] = None
+
     reniec_validated: bool
     reniec_validation_date: Optional[datetime]
 
@@ -391,10 +457,13 @@ class TechoPropioApplicationResponseDTO(BaseModel):
     registration_year: Optional[int] = Field(description="Año de registro")
     sequential_number: Optional[int] = Field(description="Número secuencial")
     
-    # Campos existentes
-    main_applicant: ApplicantResponseDTO
+    # ✅ NUEVA LÓGICA: Datos de usuario separados
+    user_data: Optional[UserDataResponseDTO] = Field(description="Datos del usuario para control interno")
+    
+    # ✅ CAMBIO: main_applicant ahora es head_of_family
+    head_of_family: ApplicantResponseDTO = Field(description="Jefe de familia")
     property_info: PropertyInfoResponseDTO
-    main_applicant_economic: EconomicInfoResponseDTO
+    head_of_family_economic: EconomicInfoResponseDTO = Field(description="Info económica del jefe de familia")
     spouse: Optional[ApplicantResponseDTO]
     spouse_economic: Optional[EconomicInfoResponseDTO]
     household_members: List[HouseholdMemberResponseDTO]

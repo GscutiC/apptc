@@ -109,24 +109,27 @@ class MongoCRUDRepository:
             raise
     
     async def delete_application(self, application_id: str) -> bool:
-        """Eliminar solicitud (soft delete recomendado)"""
+        """
+        Eliminar solicitud físicamente de la base de datos (HARD DELETE)
+
+        ⚠️ IMPORTANTE: Esta operación es irreversible
+        Solo debe usarse para borradores que el usuario desea eliminar completamente
+        """
         try:
-            # Soft delete - marcar como eliminado
-            result = await self.collection.update_one(
-                {"_id": ObjectId(application_id)},
-                {
-                    "$set": {
-                        "status": ApplicationStatus.CANCELLED.value,
-                        "deleted_at": utc_now(),
-                        "is_deleted": True
-                    }
-                }
+            # ✅ HARD DELETE - Eliminar el documento físicamente de MongoDB
+            result = await self.collection.delete_one(
+                {"_id": ObjectId(application_id)}
             )
-            
-            return result.modified_count > 0
-            
+
+            if result.deleted_count > 0:
+                logger.info(f"✅ Solicitud eliminada permanentemente: {application_id}")
+                return True
+            else:
+                logger.warning(f"⚠️ Solicitud no encontrada para eliminar: {application_id}")
+                return False
+
         except Exception as e:
-            logger.error(f"Error eliminando solicitud {application_id}: {e}")
+            logger.error(f"❌ Error eliminando solicitud {application_id}: {e}")
             return False
     
     async def get_application_by_dni(self, document_number: str) -> Optional[TechoPropioApplication]:

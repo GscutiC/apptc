@@ -40,7 +40,12 @@ class MongoQueryRepository:
     ) -> List[TechoPropioApplication]:
         """Obtener solicitudes de un usuario"""
         try:
-            query = {"created_by": user_id}
+            # ✅ CORRECCIÓN: Buscar por user_id (no created_by)
+            query = {"user_id": user_id}
+            
+            # 🐛 DEBUG: Log de consulta
+            logger.info(f"📋 Consultando aplicaciones con query: {query}")
+            logger.info(f"📊 Parámetros: user_id={user_id}, status={status}, limit={limit}, offset={offset}")
             
             if status:
                 query["status"] = status.value
@@ -243,7 +248,7 @@ class MongoQueryRepository:
             mongo_query["status"] = search_query["status"].value if hasattr(search_query["status"], 'value') else search_query["status"]
         
         if search_query.get("user_id"):
-            mongo_query["created_by"] = search_query["user_id"]
+            mongo_query["user_id"] = search_query["user_id"]  # ✅ CORRECCIÓN: user_id en lugar de created_by
         
         # Filtros de ubicación
         if search_query.get("department"):
@@ -316,12 +321,16 @@ class MongoQueryRepository:
     ) -> int:
         """Contar solicitudes de un usuario"""
         try:
-            query = {"created_by": user_id}
+            # ✅ CORRECCIÓN: Buscar por user_id (no created_by)
+            query = {"user_id": user_id}
             
             if status:
                 query["status"] = status.value
             
-            return await self.collection.count_documents(query)
+            count = await self.collection.count_documents(query)
+            logger.info(f"📊 Documentos encontrados para user_id={user_id}: {count}")
+            
+            return count
             
         except Exception as e:
             logger.error(f"Error contando solicitudes del usuario {user_id}: {e}")

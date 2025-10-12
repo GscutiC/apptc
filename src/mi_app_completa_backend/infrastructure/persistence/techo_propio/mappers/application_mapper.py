@@ -30,16 +30,17 @@ class ApplicationMapper(BaseMapper):
             document = {
                 "status": cls.safe_enum_to_value(application.status),
                 "priority_score": float(application.priority_score),
+                "user_id": application.user_id,  # ✅ CRÍTICO: ID del usuario propietario
                 "created_by": application.created_by,
                 "created_at": application.created_at,
                 "updated_at": application.updated_at,
                 "updated_by": application.updated_by,
                 "version": application.version,
                 
-                # Usar mappers específicos
-                "main_applicant": ApplicantMapper.to_dict(application.main_applicant),
+                # Usar mappers específicos - NOTA: guardamos como main_applicant en MongoDB para compatibilidad
+                "main_applicant": ApplicantMapper.to_dict(application.head_of_family),
                 "property_info": PropertyMapper.to_dict(application.property_info),
-                "main_applicant_economic": EconomicMapper.to_dict(application.main_applicant_economic),
+                "main_applicant_economic": EconomicMapper.to_dict(application.head_of_family_economic),
             }
             
             # Cónyuge (opcional)
@@ -76,20 +77,21 @@ class ApplicationMapper(BaseMapper):
     def from_dict(cls, document: Dict[str, Any]) -> TechoPropioApplication:
         """Convertir documento MongoDB a entidad TechoPropioApplication"""
         try:
-            # Usar mappers específicos para crear componentes
-            main_applicant = ApplicantMapper.from_dict(document["main_applicant"])
+            # Usar mappers específicos para crear componentes - MongoDB usa main_applicant
+            head_of_family = ApplicantMapper.from_dict(document["main_applicant"])
             property_info = PropertyMapper.from_dict(document["property_info"])
-            main_applicant_economic = EconomicMapper.from_dict(document["main_applicant_economic"])
+            head_of_family_economic = EconomicMapper.from_dict(document["main_applicant_economic"])
             
-            # Crear solicitud
+            # Crear solicitud con nomenclatura correcta
             application = TechoPropioApplication(
-                main_applicant=main_applicant,
+                head_of_family=head_of_family,
                 property_info=property_info,
-                main_applicant_economic=main_applicant_economic
+                head_of_family_economic=head_of_family_economic
             )
             
             # Asignar ID y metadatos
             application.id = str(document["_id"])
+            application.user_id = document.get("user_id")  # ✅ CRÍTICO: Restaurar user_id
             application.created_by = document.get("created_by", "system")
             
             # Restaurar metadatos

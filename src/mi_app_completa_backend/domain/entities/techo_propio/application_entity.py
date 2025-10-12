@@ -17,6 +17,22 @@ from ...value_objects.techo_propio import (
     EDITABLE_STATUSES, FINAL_STATUSES
 )
 
+# ✅ NUEVO: Datos de usuario para control interno
+@dataclass
+class UserData:
+    """Datos del usuario para control interno - NO van en la solicitud oficial"""
+    dni: str
+    names: str
+    surnames: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    birth_date: Optional[datetime] = None
+    notes: Optional[str] = None  # Notas internas
+    
+    @property
+    def full_name(self) -> str:
+        return f"{self.names} {self.surnames}".strip()
+
 
 @dataclass
 class TechoPropioApplication(TechoPropioBaseEntity):
@@ -35,14 +51,17 @@ class TechoPropioApplication(TechoPropioBaseEntity):
     registration_year: Optional[int] = None  # Año de registro (derivado de registration_date)
     sequential_number: Optional[int] = None  # Número secuencial dentro del año
     
-    # Entidades relacionadas
-    main_applicant: Applicant = None  # Jefe de familia
+    # ✅ NUEVA LÓGICA: Separación de datos de usuario vs solicitud
+    user_data: Optional[UserData] = None  # Datos del usuario (CONTROL INTERNO)
+    
+    # Entidades de la solicitud oficial
+    head_of_family: Applicant = None  # ✅ CAMBIO: Jefe de familia (antes main_applicant)
     spouse: Optional[Applicant] = None  # Cónyuge/conviviente
     property_info: PropertyInfo = None  # Información del predio
     household_members: List[HouseholdMember] = field(default_factory=list)  # Carga familiar
     
     # Información económica
-    main_applicant_economic: Optional[EconomicInfo] = None
+    head_of_family_economic: Optional[EconomicInfo] = None  # ✅ CAMBIO: Info económica jefe de familia
     spouse_economic: Optional[EconomicInfo] = None
     
     # Fechas importantes
@@ -73,22 +92,35 @@ class TechoPropioApplication(TechoPropioBaseEntity):
         if not self.registration_year:
             self.registration_year = self.registration_date.year if self.registration_date else datetime.now().year
             
-        # Validaciones existentes
-        if self.main_applicant:
-            self._validate_main_applicant()
+        # ✅ NUEVAS VALIDACIONES: Validar datos de usuario y jefe de familia
+        if self.user_data:
+            self._validate_user_data()
+        if self.head_of_family:
+            self._validate_head_of_family()
         if self.spouse:
             self._validate_spouse_consistency()
         if self.household_members:
             self._validate_household_members()
         self._validate_economic_info_consistency()
     
-    def _validate_main_applicant(self) -> None:
-        """Validar solicitante principal"""
-        if not self.main_applicant:
-            raise ValueError("El solicitante principal es obligatorio")
+    def _validate_user_data(self) -> None:
+        """Validar datos de usuario para control interno"""
+        if not self.user_data:
+            return
+            
+        if not self.user_data.dni or len(self.user_data.dni) != 8:
+            raise ValueError("DNI del usuario debe tener 8 dígitos")
+            
+        if not self.user_data.names or not self.user_data.surnames:
+            raise ValueError("Nombres y apellidos del usuario son obligatorios")
+    
+    def _validate_head_of_family(self) -> None:
+        """Validar jefe de familia"""
+        if not self.head_of_family:
+            raise ValueError("El jefe de familia es obligatorio")
         
-        if not self.main_applicant.is_main_applicant:
-            raise ValueError("El solicitante principal debe estar marcado como tal")
+        if not self.head_of_family.is_main_applicant:
+            raise ValueError("El jefe de familia debe estar marcado como solicitante principal")
     
     def _validate_spouse_consistency(self) -> None:
         """Validar consistencia del cónyuge"""
@@ -96,16 +128,21 @@ class TechoPropioApplication(TechoPropioBaseEntity):
             return
             
         if self.spouse.is_main_applicant:
-            raise ValueError("El cónyuge no puede estar marcado como solicitante principal")
+            raise ValueError("El cónyuge no puede estar marcado como jefe de familia")
         
-        # Verificar que el solicitante principal esté casado o conviviendo
-        if self.main_applicant and not self.main_applicant.is_married_or_cohabiting():
-            raise ValueError("Solo pueden incluir cónyuge los solicitantes casados o convivientes")
+        # Verificar que el jefe de familia esté casado o conviviendo
+        if self.head_of_family and not self.head_of_family.is_married_or_cohabiting():
+            raise ValueError("Solo pueden incluir cónyuge los jefes de familia casados o convivientes")
         
         # No pueden tener el mismo DNI
-        if (self.main_applicant and 
-            self.main_applicant.document_number == self.spouse.document_number):
-            raise ValueError("El solicitante y cónyuge no pueden tener el mismo documento")
+        if (self.head_of_family and 
+            self.head_of_family.document_number == self.spouse.document_number):
+            raise ValueError("El jefe de familia y cónyuge no pueden tener el mismo documento")
+        
+        # ✅ NUEVA VALIDACIÓN: Tampoco puede tener el mismo DNI que el usuario
+        if (self.user_data and 
+            self.user_data.dni == self.spouse.document_number):
+            raise ValueError("El cónyuge no puede tener el mismo DNI que el usuario registrado")
     
     def _validate_household_members(self) -> None:
         """Validar miembros de la carga familiar"""
@@ -116,13 +153,22 @@ class TechoPropioApplication(TechoPropioBaseEntity):
         if len(self.household_members) > max_members:
             raise ValueError(f"No se pueden registrar más de {max_members} miembros familiares")
         
-        # Validar DNIs únicos
+        # ✅ NUEVA VALIDACIÓN: DNIs únicos incluyendo usuario, jefe de familia, cónyuge y carga familiar
         all_dnis = []
-        if self.main_applicant:
-            all_dnis.append(self.main_applicant.document_number)
+        
+        # DNI del usuario (control interno)
+        if self.user_data:
+            all_dnis.append(self.user_data.dni)
+            
+        # DNI del jefe de familia
+        if self.head_of_family:
+            all_dnis.append(self.head_of_family.document_number)
+            
+        # DNI del cónyuge
         if self.spouse:
             all_dnis.append(self.spouse.document_number)
             
+        # DNIs de carga familiar
         for member in self.household_members:
             if member.document_number in all_dnis:
                 raise ValueError(f"DNI duplicado encontrado: {member.document_number}")
@@ -130,9 +176,9 @@ class TechoPropioApplication(TechoPropioBaseEntity):
     
     def _validate_economic_info_consistency(self) -> None:
         """Validar consistencia de información económica"""
-        if self.main_applicant_economic and self.main_applicant:
-            if self.main_applicant_economic.applicant_id != self.main_applicant.id:
-                raise ValueError("La información económica del solicitante principal no coincide")
+        if self.head_of_family_economic and self.head_of_family:
+            if self.head_of_family_economic.applicant_id != self.head_of_family.id:
+                raise ValueError("La información económica del jefe de familia no coincide")
         
         if self.spouse_economic and self.spouse:
             if self.spouse_economic.applicant_id != self.spouse.id:
@@ -154,8 +200,8 @@ class TechoPropioApplication(TechoPropioBaseEntity):
         """Ingreso total familiar mensual"""
         total = Decimal('0')
         
-        if self.main_applicant_economic:
-            total += self.main_applicant_economic.total_monthly_income
+        if self.head_of_family_economic:
+            total += self.head_of_family_economic.total_monthly_income
         
         if self.spouse_economic:
             total += self.spouse_economic.total_monthly_income
@@ -188,9 +234,9 @@ class TechoPropioApplication(TechoPropioBaseEntity):
         """Verificar si puede ser enviada para revisión"""
         return (
             self.status == ApplicationStatus.DRAFT and
-            self.main_applicant is not None and
+            self.head_of_family is not None and
             self.property_info is not None and
-            self.main_applicant_economic is not None
+            self.head_of_family_economic is not None
         )
     
     def generate_application_number(self, sequential_number: Optional[int] = None) -> str:
@@ -356,16 +402,20 @@ class TechoPropioApplication(TechoPropioBaseEntity):
     
     def get_completion_percentage(self) -> float:
         """Obtener porcentaje de completitud de la solicitud"""
-        total_sections = 4  # Solicitante, propiedad, económica, (cónyuge opcional)
+        total_sections = 4  # Usuario, jefe de familia, propiedad, económica, (cónyuge opcional)
         completed_sections = 0
         
-        if self.main_applicant:
+        # ✅ NUEVA LÓGICA: Incluir datos de usuario
+        if self.user_data:
+            completed_sections += 1
+            
+        if self.head_of_family:
             completed_sections += 1
             
         if self.property_info:
             completed_sections += 1
             
-        if self.main_applicant_economic:
+        if self.head_of_family_economic:
             completed_sections += 1
             
         # Si tiene cónyuge, debe tener información económica del cónyuge
@@ -380,15 +430,32 @@ class TechoPropioApplication(TechoPropioBaseEntity):
     
     def to_dict(self) -> Dict[str, Any]:
         """Convertir a diccionario para persistencia"""
+        user_data_dict = None
+        if self.user_data:
+            user_data_dict = {
+                "dni": self.user_data.dni,
+                "names": self.user_data.names,
+                "surnames": self.user_data.surnames,
+                "phone": self.user_data.phone,
+                "email": self.user_data.email,
+                "birth_date": self.user_data.birth_date.isoformat() if self.user_data.birth_date else None,
+                "notes": self.user_data.notes
+            }
+        
         return {
             "id": self.id,
             "application_number": self.application_number,
             "status": self.status.value,
-            "main_applicant": self.main_applicant.to_dict() if self.main_applicant else None,
+            "registration_date": self.registration_date.isoformat() if self.registration_date else None,
+            "convocation_code": self.convocation_code,
+            "registration_year": self.registration_year,
+            "sequential_number": self.sequential_number,
+            "user_data": user_data_dict,
+            "head_of_family": self.head_of_family.to_dict() if self.head_of_family else None,
             "spouse": self.spouse.to_dict() if self.spouse else None,
             "property_info": self.property_info.to_dict() if self.property_info else None,
             "household_members": [member.to_dict() for member in self.household_members],
-            "main_applicant_economic": self.main_applicant_economic.to_dict() if self.main_applicant_economic else None,
+            "head_of_family_economic": self.head_of_family_economic.to_dict() if self.head_of_family_economic else None,
             "spouse_economic": self.spouse_economic.to_dict() if self.spouse_economic else None,
             "submitted_at": self.submitted_at.isoformat() if self.submitted_at else None,
             "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
@@ -414,9 +481,31 @@ class TechoPropioApplication(TechoPropioBaseEntity):
         application.application_number = data.get("application_number")
         application.status = ApplicationStatus(data.get("status", ApplicationStatus.DRAFT.value))
         
+        # ✅ NUEVOS CAMPOS: Información de registro
+        if data.get("registration_date"):
+            application.registration_date = datetime.fromisoformat(data["registration_date"])
+        application.convocation_code = data.get("convocation_code")
+        application.registration_year = data.get("registration_year")
+        application.sequential_number = data.get("sequential_number")
+        
+        # ✅ NUEVA LÓGICA: Datos de usuario separados
+        if data.get("user_data"):
+            user_data_dict = data["user_data"]
+            application.user_data = UserData(
+                dni=user_data_dict["dni"],
+                names=user_data_dict["names"],
+                surnames=user_data_dict["surnames"],
+                phone=user_data_dict.get("phone"),
+                email=user_data_dict.get("email"),
+                birth_date=datetime.fromisoformat(user_data_dict["birth_date"]) if user_data_dict.get("birth_date") else None,
+                notes=user_data_dict.get("notes")
+            )
+        
         # Entidades relacionadas
-        if data.get("main_applicant"):
-            application.main_applicant = Applicant.from_dict(data["main_applicant"])
+        if data.get("head_of_family"):
+            application.head_of_family = Applicant.from_dict(data["head_of_family"])
+        elif data.get("main_applicant"):  # ✅ RETROCOMPATIBILIDAD
+            application.head_of_family = Applicant.from_dict(data["main_applicant"])
             
         if data.get("spouse"):
             application.spouse = Applicant.from_dict(data["spouse"])
@@ -430,8 +519,10 @@ class TechoPropioApplication(TechoPropioBaseEntity):
                 for member_data in data["household_members"]
             ]
             
-        if data.get("main_applicant_economic"):
-            application.main_applicant_economic = EconomicInfo.from_dict(data["main_applicant_economic"])
+        if data.get("head_of_family_economic"):
+            application.head_of_family_economic = EconomicInfo.from_dict(data["head_of_family_economic"])
+        elif data.get("main_applicant_economic"):  # ✅ RETROCOMPATIBILIDAD
+            application.head_of_family_economic = EconomicInfo.from_dict(data["main_applicant_economic"])
             
         if data.get("spouse_economic"):
             application.spouse_economic = EconomicInfo.from_dict(data["spouse_economic"])

@@ -4,6 +4,7 @@ DTOs para el módulo Techo Propio
 
 from .techo_propio_dto import (
     # DTOs de creación
+    UserDataDTO,
     ApplicantCreateDTO,
     PropertyInfoCreateDTO,
     HouseholdMemberCreateDTO,
@@ -12,6 +13,7 @@ from .techo_propio_dto import (
     TechoPropioApplicationUpdateDTO,
     
     # DTOs de respuesta
+    UserDataResponseDTO,
     ApplicantResponseDTO,
     PropertyInfoResponseDTO,
     HouseholdMemberResponseDTO,
@@ -62,6 +64,7 @@ from .convocation_dto import (
 
 __all__ = [
     # DTOs de creación
+    'UserDataDTO',
     'ApplicantCreateDTO',
     'PropertyInfoCreateDTO',
     'HouseholdMemberCreateDTO',
@@ -70,6 +73,7 @@ __all__ = [
     'TechoPropioApplicationUpdateDTO',
     
     # DTOs de respuesta
+    'UserDataResponseDTO',
     'ApplicantResponseDTO',
     'PropertyInfoResponseDTO',
     'HouseholdMemberResponseDTO',

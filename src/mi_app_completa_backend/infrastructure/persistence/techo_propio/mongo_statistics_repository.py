@@ -38,7 +38,7 @@ class MongoStatisticsRepository:
         status_filter: Optional[ApplicationStatus] = None
     ) -> int:
         """Contar solicitudes de un usuario"""
-        query = {"created_by": user_id}
+        query = {"user_id": user_id}  # ✅ CORRECCIÓN: user_id en lugar de created_by
         if status_filter:
             query["status"] = status_filter.value
         return await self.collection.count_documents(query)
@@ -300,7 +300,7 @@ class MongoStatisticsRepository:
             mongo_query["status"] = search_query["status"].value if hasattr(search_query["status"], 'value') else search_query["status"]
         
         if search_query.get("user_id"):
-            mongo_query["created_by"] = search_query["user_id"]
+            mongo_query["user_id"] = search_query["user_id"]  # ✅ CORRECCIÓN: user_id en lugar de created_by
         
         # Filtros de ubicación
         if search_query.get("department"):

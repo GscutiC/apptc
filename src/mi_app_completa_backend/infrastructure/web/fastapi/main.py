@@ -62,10 +62,24 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     except Exception as e:
         logger.error(f"No se pudo leer el body: {e}")
     
+    # ✅ FIX: Limpiar errors para asegurar que sean JSON serializables
+    def clean_error(error: dict) -> dict:
+        """Convierte objetos no serializables a strings"""
+        cleaned = error.copy()
+        if 'ctx' in cleaned and cleaned['ctx']:
+            # Convertir valores no serializables a strings
+            cleaned['ctx'] = {
+                k: str(v) if not isinstance(v, (str, int, float, bool, type(None))) else v
+                for k, v in cleaned['ctx'].items()
+            }
+        return cleaned
+    
+    cleaned_errors = [clean_error(e) for e in errors]
+    
     return JSONResponse(
         status_code=422,
         content={
-            "detail": errors,
+            "detail": cleaned_errors,
             "message": "Error de validación en los datos enviados"
         }
     )

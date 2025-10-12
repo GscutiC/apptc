@@ -19,9 +19,12 @@ from ....domain.services.techo_propio import TechoPropioBusinessRules
 # Importar DTOs
 from ...dto.techo_propio import (
     TechoPropioApplicationCreateDTO, TechoPropioApplicationResponseDTO,
-    ApplicantResponseDTO, PropertyInfoResponseDTO, HouseholdMemberResponseDTO,
-    EconomicInfoResponseDTO
+    UserDataResponseDTO, ApplicantResponseDTO, PropertyInfoResponseDTO, 
+    HouseholdMemberResponseDTO, EconomicInfoResponseDTO
 )
+
+# Importar UserData del dominio
+from ....domain.entities.techo_propio.application_entity import UserData
 
 
 class CreateApplicationUseCase:
@@ -74,8 +77,9 @@ class CreateApplicationUseCase:
         """Validar que los DNIs no estén duplicados en el sistema"""
         all_dnis = set()
         
-        # Recopilar DNIs de la solicitud
-        all_dnis.add(dto.main_applicant.document_number)
+        # ✅ NUEVA LÓGICA: Recopilar DNIs incluyendo datos de usuario
+        all_dnis.add(dto.user_data.dni)  # DNI del usuario
+        all_dnis.add(dto.head_of_family.document_number)  # DNI del jefe de familia
         if dto.spouse:
             all_dnis.add(dto.spouse.document_number)
         for member in dto.household_members:
@@ -95,21 +99,32 @@ class CreateApplicationUseCase:
     ) -> TechoPropioApplication:
         """Crear todas las entidades de dominio desde DTOs"""
         
-        # Crear solicitante principal
-        main_applicant = Applicant(
-            document_type=dto.main_applicant.document_type,
-            document_number=dto.main_applicant.document_number,
-            first_name=dto.main_applicant.first_name,
-            paternal_surname=dto.main_applicant.paternal_surname,
-            maternal_surname=dto.main_applicant.maternal_surname,
-            birth_date=dto.main_applicant.birth_date,
-            civil_status=dto.main_applicant.civil_status,
-            education_level=dto.main_applicant.education_level,
-            occupation=dto.main_applicant.occupation,
-            disability_type=dto.main_applicant.disability_type,
+        # ✅ NUEVA LÓGICA: Crear datos de usuario para control interno
+        user_data = UserData(
+            dni=dto.user_data.dni,
+            names=dto.user_data.names,
+            surnames=dto.user_data.surnames,
+            phone=dto.user_data.phone,
+            email=dto.user_data.email,
+            birth_date=dto.user_data.birth_date,
+            notes=dto.user_data.notes
+        )
+        
+        # ✅ CAMBIO: Crear jefe de familia (antes era main_applicant)
+        head_of_family = Applicant(
+            document_type=dto.head_of_family.document_type,
+            document_number=dto.head_of_family.document_number,
+            first_name=dto.head_of_family.first_name,
+            paternal_surname=dto.head_of_family.paternal_surname,
+            maternal_surname=dto.head_of_family.maternal_surname,
+            birth_date=dto.head_of_family.birth_date,
+            civil_status=dto.head_of_family.civil_status,
+            education_level=dto.head_of_family.education_level,
+            occupation=dto.head_of_family.occupation,
+            disability_type=dto.head_of_family.disability_type,
             is_main_applicant=True,
-            phone_number=dto.main_applicant.phone_number,
-            email=dto.main_applicant.email
+            phone_number=dto.head_of_family.phone_number,
+            email=dto.head_of_family.email
         )
         
         # Crear información del predio
@@ -128,17 +143,17 @@ class CreateApplicationUseCase:
             longitude=dto.property_info.longitude
         )
         
-        # Crear información económica del solicitante principal
-        main_economic = EconomicInfo(
-            employment_situation=dto.main_applicant_economic.employment_situation,
-            monthly_income=dto.main_applicant_economic.monthly_income,
-            applicant_id=main_applicant.id,
-            work_condition=dto.main_applicant_economic.work_condition,
-            occupation_detail=dto.main_applicant_economic.occupation_detail,
-            employer_name=dto.main_applicant_economic.employer_name,
-            has_additional_income=dto.main_applicant_economic.has_additional_income,
-            additional_income_amount=dto.main_applicant_economic.additional_income_amount,
-            additional_income_source=dto.main_applicant_economic.additional_income_source,
+        # ✅ CAMBIO: Crear información económica del jefe de familia
+        head_of_family_economic = EconomicInfo(
+            employment_situation=dto.head_of_family_economic.employment_situation,
+            monthly_income=dto.head_of_family_economic.monthly_income,
+            applicant_id=head_of_family.id,
+            work_condition=dto.head_of_family_economic.work_condition,
+            occupation_detail=dto.head_of_family_economic.occupation_detail,
+            employer_name=dto.head_of_family_economic.employer_name,
+            has_additional_income=dto.head_of_family_economic.has_additional_income,
+            additional_income_amount=dto.head_of_family_economic.additional_income_amount,
+            additional_income_source=dto.head_of_family_economic.additional_income_source,
             is_main_applicant=True
         )
         
@@ -198,18 +213,19 @@ class CreateApplicationUseCase:
             )
             household_members.append(member)
         
-        # Crear solicitud principal
+        # ✅ NUEVA LÓGICA: Crear solicitud principal con separación usuario/jefe de familia
         application = TechoPropioApplication(
             status=ApplicationStatus.DRAFT,
-            convocation_code=dto.convocation_code,  # ✅ Agregar código de convocatoria
-            main_applicant=main_applicant,
+            convocation_code=dto.convocation_code,
+            user_data=user_data,  # ✅ NUEVO: Datos de usuario para control interno
+            head_of_family=head_of_family,  # ✅ CAMBIO: Jefe de familia (antes main_applicant)
             spouse=spouse,
             property_info=property_info,
             household_members=household_members,
-            main_applicant_economic=main_economic,
+            head_of_family_economic=head_of_family_economic,  # ✅ CAMBIO: Info económica jefe de familia
             spouse_economic=spouse_economic,
-            user_id=user_id,  # ✅ FIX: Usar user_id en lugar de created_by
-            created_by=user_id,  # ✅ Para auditoría
+            user_id=user_id,
+            created_by=user_id,  # Para auditoría
             updated_by=user_id
         )
         
@@ -243,26 +259,49 @@ class CreateApplicationUseCase:
     ) -> TechoPropioApplicationResponseDTO:
         """Convertir entidad de dominio a DTO de respuesta"""
         
-        # Convertir solicitante principal
-        main_applicant_dto = ApplicantResponseDTO(
-            id=application.main_applicant.id,
-            document_type=application.main_applicant.document_type,
-            document_number=application.main_applicant.document_number,
-            first_name=application.main_applicant.first_name,
-            paternal_surname=application.main_applicant.paternal_surname,
-            maternal_surname=application.main_applicant.maternal_surname,
-            full_name=application.main_applicant.full_name,
-            birth_date=application.main_applicant.birth_date,
-            age=application.main_applicant.age,
-            civil_status=application.main_applicant.civil_status,
-            education_level=application.main_applicant.education_level,
-            occupation=application.main_applicant.occupation,
-            disability_type=application.main_applicant.disability_type,
-            is_main_applicant=application.main_applicant.is_main_applicant,
-            phone_number=application.main_applicant.phone_number,
-            email=application.main_applicant.email,
-            reniec_validated=application.main_applicant.reniec_validated,
-            reniec_validation_date=application.main_applicant.reniec_validation_date
+        # ✅ NUEVA LÓGICA: Convertir datos de usuario
+        user_data_dto = None
+        if application.user_data:
+            user_data_dto = UserDataResponseDTO(
+                dni=application.user_data.dni,
+                names=application.user_data.names,
+                surnames=application.user_data.surnames,
+                full_name=application.user_data.full_name,
+                phone=application.user_data.phone,
+                email=application.user_data.email,
+                birth_date=application.user_data.birth_date if application.user_data.birth_date else None,
+                notes=application.user_data.notes
+            )
+        
+        # ✅ CAMBIO: Convertir jefe de familia (antes main_applicant)
+        head_of_family_dto = ApplicantResponseDTO(
+            id=application.head_of_family.id,
+            document_type=application.head_of_family.document_type,
+            document_number=application.head_of_family.document_number,
+            first_name=application.head_of_family.first_name,
+            paternal_surname=application.head_of_family.paternal_surname,
+            maternal_surname=application.head_of_family.maternal_surname,
+            full_name=application.head_of_family.full_name,
+            birth_date=application.head_of_family.birth_date,
+            age=application.head_of_family.age,
+            civil_status=application.head_of_family.civil_status,
+            education_level=application.head_of_family.education_level,
+            occupation=application.head_of_family.occupation,
+            disability_type=application.head_of_family.disability_type,
+            is_main_applicant=application.head_of_family.is_main_applicant,
+            phone_number=application.head_of_family.phone_number,
+            email=application.head_of_family.email,
+            # ✅ NUEVO: Agregar current_address copiando desde property_info para compatibilidad con frontend
+            current_address={
+                "department": application.property_info.department,
+                "province": application.property_info.province,
+                "district": application.property_info.district,
+                "address": application.property_info.address,
+                "reference": application.property_info.reference,
+                "ubigeo_code": application.property_info.ubigeo_code
+            },
+            reniec_validated=application.head_of_family.reniec_validated,
+            reniec_validation_date=application.head_of_family.reniec_validation_date
         )
         
         # Convertir información del predio
@@ -285,21 +324,21 @@ class CreateApplicationUseCase:
             short_address=application.property_info.short_address
         )
         
-        # Convertir información económica principal
-        main_economic_dto = EconomicInfoResponseDTO(
-            id=application.main_applicant_economic.id,
-            employment_situation=application.main_applicant_economic.employment_situation,
-            work_condition=application.main_applicant_economic.work_condition,
-            occupation_detail=application.main_applicant_economic.occupation_detail,
-            employer_name=application.main_applicant_economic.employer_name,
-            monthly_income=application.main_applicant_economic.monthly_income,
-            has_additional_income=application.main_applicant_economic.has_additional_income,
-            additional_income_amount=application.main_applicant_economic.additional_income_amount,
-            additional_income_source=application.main_applicant_economic.additional_income_source,
-            total_monthly_income=application.main_applicant_economic.total_monthly_income,
-            annual_income=application.main_applicant_economic.annual_income,
-            is_main_applicant=application.main_applicant_economic.is_main_applicant,
-            income_level_category=application.main_applicant_economic.get_income_level_category()
+        # ✅ CAMBIO: Convertir información económica del jefe de familia
+        head_of_family_economic_dto = EconomicInfoResponseDTO(
+            id=application.head_of_family_economic.id,
+            employment_situation=application.head_of_family_economic.employment_situation,
+            work_condition=application.head_of_family_economic.work_condition,
+            occupation_detail=application.head_of_family_economic.occupation_detail,
+            employer_name=application.head_of_family_economic.employer_name,
+            monthly_income=application.head_of_family_economic.monthly_income,
+            has_additional_income=application.head_of_family_economic.has_additional_income,
+            additional_income_amount=application.head_of_family_economic.additional_income_amount,
+            additional_income_source=application.head_of_family_economic.additional_income_source,
+            total_monthly_income=application.head_of_family_economic.total_monthly_income,
+            annual_income=application.head_of_family_economic.annual_income,
+            is_main_applicant=application.head_of_family_economic.is_main_applicant,
+            income_level_category=application.head_of_family_economic.get_income_level_category()
         )
         
         # Convertir cónyuge si existe
@@ -323,6 +362,15 @@ class CreateApplicationUseCase:
                 is_main_applicant=application.spouse.is_main_applicant,
                 phone_number=application.spouse.phone_number,
                 email=application.spouse.email,
+                # ✅ NUEVO: Agregar current_address copiando desde property_info para compatibilidad con frontend
+                current_address={
+                    "department": application.property_info.department,
+                    "province": application.property_info.province,
+                    "district": application.property_info.district,
+                    "address": application.property_info.address,
+                    "reference": application.property_info.reference,
+                    "ubigeo_code": application.property_info.ubigeo_code
+                },
                 reniec_validated=application.spouse.reniec_validated,
                 reniec_validation_date=application.spouse.reniec_validation_date
             )
@@ -381,9 +429,11 @@ class CreateApplicationUseCase:
             registration_year=application.registration_year,
             sequential_number=application.sequential_number,
             
-            main_applicant=main_applicant_dto,
+            # ✅ NUEVA LÓGICA: Separación usuario/jefe de familia
+            user_data=user_data_dto,
+            head_of_family=head_of_family_dto,
             property_info=property_dto,
-            main_applicant_economic=main_economic_dto,
+            head_of_family_economic=head_of_family_economic_dto,
             spouse=spouse_dto,
             spouse_economic=spouse_economic_dto,
             household_members=household_dtos,

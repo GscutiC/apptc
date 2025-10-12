@@ -77,7 +77,7 @@ async def create_application(
     # 🐛 DEBUG: Mostrar datos recibidos
     logger.info(f"📥 Datos recibidos:")
     logger.info(f"  - convocation_code: {application_data.convocation_code}")
-    logger.info(f"  - main_applicant DNI: {application_data.main_applicant.document_number}")
+    logger.info(f"  - head_of_family DNI: {application_data.head_of_family.document_number}")
     logger.info(f"  - property_info distrito: {application_data.property_info.district}")
     logger.info(f"  - household_members: {len(application_data.household_members) if application_data.household_members else 0} miembros")
 
@@ -298,7 +298,8 @@ async def change_application_status(
         response = await use_cases.change_application_status(
             application_id=application_id,
             new_status=status_update.new_status,
-            comment=status_update.comment,
+            comments=status_update.comments,
+            reason=status_update.reason,
             user_id=current_user.clerk_id
         )
 
@@ -324,6 +325,89 @@ async def change_application_status(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error interno al cambiar estado"
+        )
+
+
+# ==================== SPECIFIC STATUS ACTIONS ====================
+
+@router.post(
+    "/{application_id}/submit",
+    response_model=TechoPropioApplicationResponseDTO,
+    summary="Enviar solicitud para revisión",
+    description="Cambia el estado de DRAFT a SUBMITTED"
+)
+async def submit_application_endpoint(
+    application_id: str = Path(..., description="ID de la solicitud"),
+    use_cases: TechoPropioUseCases = Depends(get_techo_propio_use_cases),
+    current_user: User = Depends(get_current_user)
+):
+    """Envía una solicitud en borrador para revisión"""
+    logger.info(f"[API] Usuario {current_user.email} enviando solicitud: {application_id}")
+
+    try:
+        response = await use_cases.submit_application(
+            application_id=application_id,
+            user_id=current_user.clerk_id
+        )
+
+        logger.info(f"✅ Solicitud {application_id} enviada exitosamente")
+        return response
+
+    except ValueError as e:
+        logger.warning(f"Error al enviar: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Error enviando solicitud: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al enviar solicitud"
+        )
+
+
+@router.post(
+    "/{application_id}/start-review",
+    response_model=TechoPropioApplicationResponseDTO,
+    summary="Iniciar revisión de solicitud",
+    description="Cambia el estado de SUBMITTED a UNDER_REVIEW"
+)
+async def start_review_endpoint(
+    application_id: str = Path(..., description="ID de la solicitud"),
+    use_cases: TechoPropioUseCases = Depends(get_techo_propio_use_cases),
+    current_user: User = Depends(get_current_user)
+):
+    """Inicia el proceso de revisión de una solicitud"""
+    logger.info(f"[API] Usuario {current_user.email} iniciando revisión: {application_id}")
+
+    try:
+        # Cambiar a UNDER_REVIEW
+        status_dto = ApplicationStatusUpdateDTO(
+            new_status=ApplicationStatus.UNDER_REVIEW,
+            reviewer_id=current_user.clerk_id
+        )
+
+        response = await use_cases.update_application_status(
+            application_id=application_id,
+            dto=status_dto,
+            user_id=current_user.clerk_id
+        )
+
+        logger.info(f"✅ Solicitud {application_id} en revisión")
+        return response
+
+    except ValueError as e:
+        logger.warning(f"Error al iniciar revisión: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Error iniciando revisión: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al iniciar revisión"
         )
 
 
