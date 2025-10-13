@@ -355,9 +355,10 @@ class TechoPropioApplication(TechoPropioBaseEntity):
         self.update_timestamp()
     
     def reject_application(self, reviewer_id: str, reason: str, comments: Optional[str] = None) -> None:
-        """Rechazar solicitud"""
-        if self.status != ApplicationStatus.UNDER_REVIEW:
-            raise ValueError("Solo se pueden rechazar solicitudes en revisión")
+        """Rechazar solicitud o revertir aprobación"""
+        # ✅ Permitir rechazar desde UNDER_REVIEW o APPROVED (revertir aprobación)
+        if self.status not in [ApplicationStatus.UNDER_REVIEW, ApplicationStatus.APPROVED]:
+            raise ValueError("Solo se pueden rechazar solicitudes en revisión o aprobadas")
             
         if not reason or not reason.strip():
             raise ValueError("La razón de rechazo es obligatoria")

@@ -367,7 +367,9 @@ class UpdateApplicationUseCase:
                 ApplicationStatus.SUBMITTED,
                 ApplicationStatus.CANCELLED
             ],
-            ApplicationStatus.APPROVED: [],  # Estado final
+            ApplicationStatus.APPROVED: [
+                ApplicationStatus.REJECTED  # ✅ Permitir revertir aprobación a rechazado
+            ],
             ApplicationStatus.REJECTED: [],  # Estado final
             ApplicationStatus.CANCELLED: [] # Estado final
         }
