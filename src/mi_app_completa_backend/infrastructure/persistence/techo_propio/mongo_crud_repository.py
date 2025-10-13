@@ -149,7 +149,7 @@ class MongoCRUDRepository:
             return None
     
     async def check_dni_exists_in_applications(
-        self, 
+        self,
         dni: str,
         exclude_application_id: Optional[str] = None
     ) -> bool:
@@ -162,11 +162,22 @@ class MongoCRUDRepository:
                 ],
                 "status": {"$nin": [ApplicationStatus.CANCELLED.value, ApplicationStatus.REJECTED.value]}
             }
-            
+
             if exclude_application_id:
                 query["_id"] = {"$ne": ObjectId(exclude_application_id)}
-            
+                logger.info(f"🔍 Verificando DNI {dni}, excluyendo solicitud {exclude_application_id}")
+            else:
+                logger.info(f"🔍 Verificando DNI {dni} (sin exclusión)")
+
+            # 🐛 DEBUG: Ver cuántos documentos coinciden
+            matching_docs = await self.collection.find(query).to_list(length=10)
+            if matching_docs:
+                logger.warning(f"⚠️ DNI {dni} encontrado en {len(matching_docs)} solicitud(es):")
+                for doc in matching_docs:
+                    logger.warning(f"  - Solicitud: {doc['_id']}, Estado: {doc.get('status', 'N/A')}")
+
             count = await self.collection.count_documents(query)
+            logger.info(f"📊 Total documentos con DNI {dni}: {count}")
             return count > 0
             
         except Exception as e:

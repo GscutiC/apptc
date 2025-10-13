@@ -168,8 +168,10 @@ class UpdateApplicationUseCase:
         dnis_to_check = set()
         
         # Recopilar DNIs que se van a actualizar
-        if dto.main_applicant:
-            dnis_to_check.add(dto.main_applicant.document_number)
+        # ✅ SOPORTE DUAL: main_applicant (legacy) y head_of_family (nuevo)
+        head_of_family = getattr(dto, 'head_of_family', None) or getattr(dto, 'main_applicant', None)
+        if head_of_family:
+            dnis_to_check.add(head_of_family.document_number)
         if dto.spouse:
             dnis_to_check.add(dto.spouse.document_number)
         if dto.household_members:
@@ -192,25 +194,26 @@ class UpdateApplicationUseCase:
         user_id: str
     ) -> TechoPropioApplication:
         """Aplicar actualizaciones a la solicitud"""
-        
-        # Actualizar solicitante principal
-        if dto.main_applicant:
+
+        # ✅ SOPORTE DUAL: Actualizar solicitante principal (main_applicant o head_of_family)
+        head_of_family_data = getattr(dto, 'head_of_family', None) or getattr(dto, 'main_applicant', None)
+        if head_of_family_data:
             application.main_applicant = Applicant(
-                document_type=dto.main_applicant.document_type,
-                document_number=dto.main_applicant.document_number,
-                first_name=dto.main_applicant.first_name,
-                paternal_surname=dto.main_applicant.paternal_surname,
-                maternal_surname=dto.main_applicant.maternal_surname,
-                birth_date=dto.main_applicant.birth_date,
-                civil_status=dto.main_applicant.civil_status,
-                education_level=dto.main_applicant.education_level,
-                occupation=dto.main_applicant.occupation,
-                disability_type=dto.main_applicant.disability_type,
+                document_type=head_of_family_data.document_type,
+                document_number=head_of_family_data.document_number,
+                first_name=head_of_family_data.first_name,
+                paternal_surname=head_of_family_data.paternal_surname,
+                maternal_surname=head_of_family_data.maternal_surname,
+                birth_date=head_of_family_data.birth_date,
+                civil_status=head_of_family_data.civil_status,
+                education_level=head_of_family_data.education_level,
+                occupation=head_of_family_data.occupation,
+                disability_type=head_of_family_data.disability_type,
                 is_main_applicant=True,
-                phone_number=dto.main_applicant.phone_number,
-                email=dto.main_applicant.email
+                phone_number=head_of_family_data.phone_number,
+                email=head_of_family_data.email
             )
-        
+
         # Actualizar información del predio
         if dto.property_info:
             application.property_info = PropertyInfo(
@@ -218,6 +221,7 @@ class UpdateApplicationUseCase:
                 province=dto.property_info.province,
                 district=dto.property_info.district,
                 lote=dto.property_info.lote,
+                address=dto.property_info.address,  # ✅ CORREGIDO: Agregar campo obligatorio faltante
                 ubigeo_code=dto.property_info.ubigeo_code,
                 populated_center=dto.property_info.populated_center,
                 manzana=dto.property_info.manzana,
@@ -227,18 +231,19 @@ class UpdateApplicationUseCase:
                 longitude=dto.property_info.longitude
             )
         
-        # Actualizar información económica principal
-        if dto.main_applicant_economic:
+        # ✅ SOPORTE DUAL: Actualizar información económica principal (main_applicant_economic o head_of_family_economic)
+        head_economic_data = getattr(dto, 'head_of_family_economic', None) or getattr(dto, 'main_applicant_economic', None)
+        if head_economic_data:
             application.main_applicant_economic = EconomicInfo(
-                employment_situation=dto.main_applicant_economic.employment_situation,
-                monthly_income=dto.main_applicant_economic.monthly_income,
+                employment_situation=head_economic_data.employment_situation,
+                monthly_income=head_economic_data.monthly_income,
                 applicant_id=application.main_applicant.id,
-                work_condition=dto.main_applicant_economic.work_condition,
-                occupation_detail=dto.main_applicant_economic.occupation_detail,
-                employer_name=dto.main_applicant_economic.employer_name,
-                has_additional_income=dto.main_applicant_economic.has_additional_income,
-                additional_income_amount=dto.main_applicant_economic.additional_income_amount,
-                additional_income_source=dto.main_applicant_economic.additional_income_source,
+                work_condition=head_economic_data.work_condition,
+                occupation_detail=head_economic_data.occupation_detail,
+                employer_name=head_economic_data.employer_name,
+                has_additional_income=head_economic_data.has_additional_income,
+                additional_income_amount=head_economic_data.additional_income_amount,
+                additional_income_source=head_economic_data.additional_income_source,
                 is_main_applicant=True
             )
         
@@ -296,9 +301,14 @@ class UpdateApplicationUseCase:
                     document_type=member_dto.document_type,
                     document_number=member_dto.document_number,
                     birth_date=member_dto.birth_date,
-                    relationship=member_dto.relationship,
+                    civil_status=member_dto.civil_status,  # ✅ CORREGIDO: Campo obligatorio faltante
                     education_level=member_dto.education_level,
+                    occupation=member_dto.occupation,  # ✅ CORREGIDO: Campo obligatorio faltante
+                    employment_situation=member_dto.employment_situation,  # ✅ CORREGIDO: Campo obligatorio faltante
+                    work_condition=member_dto.work_condition,  # ✅ CORREGIDO: Campo obligatorio faltante
+                    monthly_income=member_dto.monthly_income,  # ✅ CORREGIDO: Campo obligatorio faltante
                     disability_type=member_dto.disability_type,
+                    relationship=member_dto.relationship,
                     is_dependent=member_dto.is_dependent
                 )
                 application.household_members.append(member)
