@@ -120,6 +120,10 @@ app.include_router(government_router)
 from .routes.techo_propio_routes import router as techo_propio_router
 app.include_router(techo_propio_router)
 
+# Incluir rutas de configuración de Techo Propio
+from .techo_propio_config_routes import router as techo_propio_config_router
+app.include_router(techo_propio_config_router)
+
 # Configuración de dependencias
 from ....infrastructure.config.database import get_database
 
