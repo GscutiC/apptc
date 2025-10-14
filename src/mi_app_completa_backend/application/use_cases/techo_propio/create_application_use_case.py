@@ -18,6 +18,7 @@ from ....domain.entities.techo_propio import (
 )
 from ....domain.value_objects.techo_propio import ApplicationStatus
 from ....domain.repositories.techo_propio import TechoPropioRepository
+from ....domain.repositories.techo_propio import ConvocationRepository
 from ....domain.services.techo_propio import TechoPropioBusinessRules
 
 # Importar DTOs
@@ -37,8 +38,13 @@ class CreateApplicationUseCase:
     Coordina la creación de todas las entidades relacionadas
     """
 
-    def __init__(self, repository: TechoPropioRepository):
+    def __init__(
+        self, 
+        repository: TechoPropioRepository,
+        convocation_repository: Optional[ConvocationRepository] = None
+    ):
         self.repository = repository
+        self.convocation_repository = convocation_repository
         self.business_rules = TechoPropioBusinessRules()
 
         # ✅ MEJORA: Flag de entorno para modo desarrollo
@@ -75,13 +81,16 @@ class CreateApplicationUseCase:
         # 2. Crear entidades de dominio
         application = await self._create_application_entities(dto, user_id)
         
-        # 3. Aplicar reglas de negocio
+        # 3. Generar código de solicitud con formato convocatoria
+        await self._generate_application_number(application)
+        
+        # 4. Aplicar reglas de negocio
         await self._apply_business_rules(application)
         
-        # 4. Persistir la solicitud
+        # 5. Persistir la solicitud
         saved_application = await self.repository.create_application(application)
         
-        # 5. Convertir a DTO de respuesta
+        # 6. Convertir a DTO de respuesta
         response_dto = await self._convert_to_response_dto(saved_application)
         
         return response_dto
@@ -301,6 +310,57 @@ class CreateApplicationUseCase:
 
         logger.info(f"✅ Puntaje de prioridad calculado: {priority_score:.2f}")
         logger.info("✅ Todas las reglas de negocio aplicadas correctamente")
+    
+    async def _generate_application_number(self, application: TechoPropioApplication) -> None:
+        """
+        Generar código de solicitud con formato convocatoria
+        
+        Formato:
+        - Con convocatoria: CONV-2025-01-015
+        - Sin convocatoria: TP-2025-000015
+        
+        El número es atómico y garantiza no duplicados usando MongoDB findAndModify
+        """
+        try:
+            if application.convocation_code and self.convocation_repository:
+                # Obtener siguiente número secuencial de la convocatoria
+                logger.info(f"Obteniendo secuencial para convocatoria: {application.convocation_code}")
+                
+                sequential_number = await self.convocation_repository.get_next_application_sequential(
+                    application.convocation_code
+                )
+                
+                logger.info(f"✅ Secuencial obtenido: {sequential_number}")
+                
+                # Generar código con formato convocatoria
+                application.generate_application_number(
+                    sequential_number=sequential_number,
+                    convocation_code=application.convocation_code
+                )
+                
+                logger.info(f"✅ Código generado: {application.application_number}")
+                
+            else:
+                # Fallback: usar timestamp si no hay convocatoria
+                import time
+                timestamp_seq = int(time.time()) % 1000000
+                application.generate_application_number(
+                    sequential_number=timestamp_seq,
+                    convocation_code=None
+                )
+                
+                logger.warning(f"⚠️ Código generado sin convocatoria: {application.application_number}")
+                
+        except Exception as e:
+            logger.error(f"Error generando código de solicitud: {e}")
+            # Fallback: usar timestamp para garantizar unicidad
+            import time
+            fallback_seq = int(time.time()) % 1000000
+            application.generate_application_number(
+                sequential_number=fallback_seq,
+                convocation_code=None
+            )
+            logger.warning(f"⚠️ Usando código fallback: {application.application_number}")
     
     async def _convert_to_response_dto(
         self, 

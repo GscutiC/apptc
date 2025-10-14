@@ -239,24 +239,49 @@ class TechoPropioApplication(TechoPropioBaseEntity):
             self.head_of_family_economic is not None
         )
     
-    def generate_application_number(self, sequential_number: Optional[int] = None) -> str:
+    def generate_application_number(
+        self, 
+        sequential_number: int,
+        convocation_code: Optional[str] = None
+    ) -> str:
         """
-        Generar número de solicitud único
-        Formato: TP-YYYY-XXXXXX (TP = Techo Propio, YYYY = año, XXXXXX = secuencial)
+        Generar número de solicitud único basado en convocatoria
+        
+        Args:
+            sequential_number: Número secuencial (REQUERIDO)
+            convocation_code: Código de convocatoria (opcional, usa self.convocation_code si no se proporciona)
+            
+        Returns:
+            str: Número de solicitud en formato:
+                - Con convocatoria: "CONV-2025-01-001"
+                - Sin convocatoria: "TP-2025-000001"
+                
+        Examples:
+            >>> app = TechoPropioApplication(convocation_code="CONV-2025-01")
+            >>> app.generate_application_number(15)
+            "CONV-2025-01-015"
+            
+            >>> app = TechoPropioApplication()
+            >>> app.generate_application_number(42)
+            "TP-2025-000042"
         """
+        # Si ya tiene número, retornarlo
         if self.application_number:
             return self.application_number
         
-        year = self.registration_year or datetime.now().year
+        # Determinar código de convocatoria
+        code = convocation_code or self.convocation_code
         
-        # Si no se proporciona número secuencial, usar timestamp
-        if sequential_number is None:
-            # Usar timestamp como fallback (últimos 6 dígitos)
-            timestamp = int(datetime.now().timestamp())
-            sequential_number = timestamp % 1000000
-            
+        # Guardar el número secuencial
         self.sequential_number = sequential_number
-        self.application_number = f"TP-{year}-{sequential_number:06d}"
+        
+        if code:
+            # Formato con convocatoria: CONV-2025-01-015
+            self.application_number = f"{code}-{sequential_number:03d}"
+        else:
+            # Fallback al formato sin convocatoria: TP-2025-000015
+            year = self.registration_year or datetime.now().year
+            self.application_number = f"TP-{year}-{sequential_number:06d}"
         
         return self.application_number
         now = datetime.utcnow()

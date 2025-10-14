@@ -101,6 +101,14 @@ class ConvocationRepository(ABC):
         """Contar solicitudes asociadas a una convocatoria"""
         pass
     
+    @abstractmethod
+    async def get_next_application_sequential(self, convocation_code: str) -> int:
+        """
+        Obtener el siguiente número secuencial de solicitud para una convocatoria
+        Usa findAndModify atómico para garantizar unicidad
+        """
+        pass
+    
     # ==================== OPERACIONES MASIVAS ====================
     
     @abstractmethod

@@ -114,18 +114,48 @@ class MongoCRUDRepository:
 
         ⚠️ IMPORTANTE: Esta operación es irreversible
         Solo debe usarse para borradores que el usuario desea eliminar completamente
+        
+        ✅ NUEVO: Decrementa el contador de convocatoria si la solicitud tiene convocation_code
         """
         try:
-            # ✅ HARD DELETE - Eliminar el documento físicamente de MongoDB
+            # 1️⃣ Primero obtener la solicitud para saber su convocation_code
+            application_doc = await self.collection.find_one(
+                {"_id": ObjectId(application_id)},
+                {"convocation_code": 1}
+            )
+            
+            if not application_doc:
+                logger.warning(f"⚠️ Solicitud no encontrada para eliminar: {application_id}")
+                return False
+            
+            # 2️⃣ Eliminar el documento físicamente de MongoDB
             result = await self.collection.delete_one(
                 {"_id": ObjectId(application_id)}
             )
 
             if result.deleted_count > 0:
                 logger.info(f"✅ Solicitud eliminada permanentemente: {application_id}")
+                
+                # 3️⃣ Decrementar contador de convocatoria si existe
+                convocation_code = application_doc.get("convocation_code")
+                if convocation_code:
+                    try:
+                        counters_collection = self.collection.database.convocation_application_counters
+                        decrement_result = await counters_collection.update_one(
+                            {"convocation_code": convocation_code},
+                            {"$inc": {"count": -1}}
+                        )
+                        
+                        if decrement_result.modified_count > 0:
+                            logger.info(f"✅ Contador decrementado para convocatoria: {convocation_code}")
+                        else:
+                            logger.warning(f"⚠️ No se pudo decrementar contador para: {convocation_code}")
+                    except Exception as counter_error:
+                        logger.error(f"❌ Error decrementando contador: {counter_error}")
+                        # No fallar si el decremento falla, ya eliminamos la solicitud
+                
                 return True
             else:
-                logger.warning(f"⚠️ Solicitud no encontrada para eliminar: {application_id}")
                 return False
 
         except Exception as e:

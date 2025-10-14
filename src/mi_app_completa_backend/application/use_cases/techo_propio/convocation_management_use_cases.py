@@ -141,28 +141,29 @@ class ConvocationManagementUseCases:
     
     async def get_all_convocations(
         self,
+        user_id: str,
         skip: int = 0,
         limit: int = 100,
         include_inactive: bool = True
     ) -> List[Convocation]:
-        """Obtener todas las convocatorias con paginación"""
-        return await self.repository.get_all_convocations(skip, limit, include_inactive)
+        """Obtener convocatorias del usuario con paginación"""
+        return await self.repository.get_all_convocations(user_id, skip, limit, include_inactive)
     
-    async def get_active_convocations(self) -> List[Convocation]:
-        """Obtener solo convocatorias activas"""
-        return await self.repository.get_active_convocations()
+    async def get_active_convocations(self, user_id: str) -> List[Convocation]:
+        """Obtener convocatorias activas del usuario"""
+        return await self.repository.get_active_convocations(user_id)
     
-    async def get_current_convocations(self) -> List[Convocation]:
-        """Obtener convocatorias vigentes (en período actual)"""
-        return await self.repository.get_current_convocations()
+    async def get_current_convocations(self, user_id: str) -> List[Convocation]:
+        """Obtener convocatorias vigentes del usuario (en período actual)"""
+        return await self.repository.get_current_convocations(user_id)
     
-    async def get_published_convocations(self) -> List[Convocation]:
-        """Obtener convocatorias publicadas (para formulario)"""
-        return await self.repository.get_published_convocations()
+    async def get_published_convocations(self, user_id: str) -> List[Convocation]:
+        """Obtener convocatorias publicadas del usuario (para formulario)"""
+        return await self.repository.get_published_convocations(user_id)
     
-    async def get_convocations_by_year(self, year: int) -> List[Convocation]:
-        """Obtener convocatorias de un año específico"""
-        return await self.repository.get_convocations_by_year(year)
+    async def get_convocations_by_year(self, user_id: str, year: int) -> List[Convocation]:
+        """Obtener convocatorias del usuario de un año específico"""
+        return await self.repository.get_convocations_by_year(user_id, year)
     
     # ==================== OPERACIONES DE ESTADO ====================
     
@@ -255,13 +256,13 @@ class ConvocationManagementUseCases:
         """Obtener estadísticas de una convocatoria específica"""
         return await self.repository.get_convocation_statistics(convocation_code)
     
-    async def get_general_statistics(self) -> dict:
-        """Obtener estadísticas generales del módulo"""
+    async def get_general_statistics(self, user_id: str) -> dict:
+        """Obtener estadísticas generales del usuario"""
         stats = await self.repository.get_general_statistics()
         
-        # Agregar estadísticas adicionales
-        all_convocations = await self.get_all_convocations(include_inactive=True)
-        current_convocations = await self.get_current_convocations()
+        # Agregar estadísticas adicionales del usuario
+        all_convocations = await self.get_all_convocations(user_id, include_inactive=True)
+        current_convocations = await self.get_current_convocations(user_id)
         
         stats.update({
             "total_convocations": len(all_convocations),

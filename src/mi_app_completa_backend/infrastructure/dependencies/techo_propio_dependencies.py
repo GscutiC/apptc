@@ -61,8 +61,17 @@ def get_ubigeo_validation_service(
     return UbigeoValidationService(ubigeo_repository=ubigeo_repository)
 
 
+def get_convocation_repository() -> MongoConvocationRepository:
+    """
+    Crear instancia del repositorio de convocatorias
+    Usado para operaciones relacionadas con convocatorias
+    """
+    return MongoConvocationRepository()
+
+
 def get_techo_propio_use_cases(
     repository: MongoTechoPropioRepository = Depends(get_mongo_techo_propio_repository),
+    convocation_repository: MongoConvocationRepository = Depends(get_convocation_repository),
     reniec_service: ReniecService = Depends(get_reniec_service),
     ubigeo_service: UbigeoValidationService = Depends(get_ubigeo_validation_service)
 ) -> TechoPropioUseCases:
@@ -72,6 +81,7 @@ def get_techo_propio_use_cases(
     """
     return TechoPropioUseCases(
         repository=repository,
+        convocation_repository=convocation_repository,
         reniec_service=reniec_service,
         ubigeo_service=ubigeo_service
     )

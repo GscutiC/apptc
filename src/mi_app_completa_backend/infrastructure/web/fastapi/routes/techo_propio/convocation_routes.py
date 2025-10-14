@@ -48,7 +48,8 @@ async def convocations_health():
             "crud": "enabled",
             "bulk_operations": "enabled", 
             "statistics": "enabled",
-            "role_restrictions": "disabled"  # Sin restricciones de roles
+            "user_filtering": "enabled",  # ✅ Filtrado por usuario activado
+            "permission_validation": "enabled"  # ✅ Validación de permisos activada
         }
     }
 
@@ -117,8 +118,8 @@ async def create_convocation(
 @router.get(
     "/",
     response_model=ConvocationListResponseDTO,
-    summary="Listar convocatorias",
-    description="Obtener lista paginada de convocatorias con filtros"
+    summary="Listar convocatorias del usuario",
+    description="Obtener convocatorias creadas por el usuario autenticado con filtros y paginación"
 )
 async def list_convocations(
     skip: int = Query(default=0, ge=0, description="Registros a omitir"),
@@ -129,17 +130,25 @@ async def list_convocations(
     use_cases: ConvocationManagementUseCases = Depends(get_convocation_use_cases),
     current_user: User = Depends(get_current_user)
 ):
-    """Listar convocatorias - Todos los usuarios pueden ver todas"""
+    """Listar convocatorias del usuario autenticado"""
     
     try:
-        logger.info(f"Listando convocatorias - user: {current_user.clerk_id}, skip: {skip}, limit: {limit}")
+        logger.info(f"Listando convocatorias del usuario: {current_user.clerk_id}, skip: {skip}, limit: {limit}")
         
         if year:
             logger.info(f"Filtrando por año: {year}")
-            convocations = await use_cases.get_convocations_by_year(year)
+            convocations = await use_cases.get_convocations_by_year(
+                user_id=current_user.clerk_id,
+                year=year
+            )
         else:
-            logger.info("Obteniendo todas las convocatorias")
-            convocations = await use_cases.get_all_convocations(skip, limit, include_inactive)
+            logger.info("Obteniendo convocatorias del usuario")
+            convocations = await use_cases.get_all_convocations(
+                user_id=current_user.clerk_id,
+                skip=skip,
+                limit=limit,
+                include_inactive=include_inactive
+            )
         
         # Aplicar filtro de búsqueda si se proporciona
         if search:
@@ -179,21 +188,21 @@ async def list_convocations(
 @router.get(
     "/active",
     response_model=List[ConvocationOptionDTO],
-    summary="Obtener convocatorias activas",
-    description="Obtener convocatorias activas para formularios y selects"
+    summary="Obtener convocatorias activas del usuario",
+    description="Obtener convocatorias activas del usuario para formularios y selects"
 )
 async def get_active_convocations(
     published_only: bool = Query(default=True, description="Solo convocatorias publicadas"),
     use_cases: ConvocationManagementUseCases = Depends(get_convocation_use_cases),
     current_user: User = Depends(get_current_user)
 ):
-    """Obtener convocatorias activas para dropdowns"""
+    """Obtener convocatorias activas del usuario para dropdowns"""
     
     try:
         if published_only:
-            convocations = await use_cases.get_published_convocations()
+            convocations = await use_cases.get_published_convocations(current_user.clerk_id)
         else:
-            convocations = await use_cases.get_active_convocations()
+            convocations = await use_cases.get_active_convocations(current_user.clerk_id)
         
         return [
             ConvocationOptionDTO.from_convocation(conv)
@@ -246,7 +255,7 @@ async def get_convocation(
     "/{convocation_id}",
     response_model=ConvocationResponseDTO,
     summary="Actualizar convocatoria",
-    description="Actualizar convocatoria existente. Todos los usuarios pueden actualizar."
+    description="Actualizar convocatoria propia. Solo el creador puede actualizar su convocatoria."
 )
 async def update_convocation(
     convocation_id: str,
@@ -254,11 +263,26 @@ async def update_convocation(
     use_cases: ConvocationManagementUseCases = Depends(get_convocation_use_cases),
     current_user: User = Depends(get_current_user)
 ):
-    """Actualizar convocatoria - Sin restricciones de roles"""
+    """Actualizar convocatoria - Solo el creador puede actualizar"""
     
     logger.info(f"Usuario {current_user.email} actualizando convocatoria: {convocation_id}")
     
     try:
+        # Verificar que la convocatoria existe y pertenece al usuario
+        existing = await use_cases.get_convocation_by_id(convocation_id)
+        if not existing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No se encontró convocatoria con ID '{convocation_id}'"
+            )
+        
+        if existing.created_by != current_user.clerk_id:
+            logger.warning(f"Usuario {current_user.clerk_id} intentó actualizar convocatoria de {existing.created_by}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tiene permisos para actualizar esta convocatoria"
+            )
+        
         # Convertir a dict excluyendo valores None
         update_dict = update_data.dict(exclude_unset=True, exclude_none=True)
         
@@ -289,18 +313,33 @@ async def update_convocation(
 @router.delete(
     "/{convocation_id}",
     summary="Eliminar convocatoria",
-    description="Eliminar convocatoria (solo si no tiene solicitudes). Todos los usuarios pueden eliminar."
+    description="Eliminar convocatoria propia (solo si no tiene solicitudes). Solo el creador puede eliminar."
 )
 async def delete_convocation(
     convocation_id: str,
     use_cases: ConvocationManagementUseCases = Depends(get_convocation_use_cases),
     current_user: User = Depends(get_current_user)
 ):
-    """Eliminar convocatoria - Sin restricciones de roles"""
+    """Eliminar convocatoria - Solo el creador puede eliminar"""
     
     logger.info(f"Usuario {current_user.email} eliminando convocatoria: {convocation_id}")
     
     try:
+        # Verificar que la convocatoria existe y pertenece al usuario
+        existing = await use_cases.get_convocation_by_id(convocation_id)
+        if not existing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No se encontró convocatoria con ID '{convocation_id}'"
+            )
+        
+        if existing.created_by != current_user.clerk_id:
+            logger.warning(f"Usuario {current_user.clerk_id} intentó eliminar convocatoria de {existing.created_by}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tiene permisos para eliminar esta convocatoria"
+            )
+        
         success = await use_cases.delete_convocation(convocation_id, current_user.clerk_id)
         
         if success:
@@ -332,16 +371,23 @@ async def delete_convocation(
     "/{convocation_id}/activate",
     response_model=ConvocationResponseDTO,
     summary="Activar convocatoria",
-    description="Activar una convocatoria específica"
+    description="Activar una convocatoria propia"
 )
 async def activate_convocation(
     convocation_id: str,
     use_cases: ConvocationManagementUseCases = Depends(get_convocation_use_cases),
     current_user: User = Depends(get_current_user)
 ):
-    """Activar convocatoria"""
+    """Activar convocatoria - Solo el creador"""
     
     try:
+        # Verificar propiedad
+        existing = await use_cases.get_convocation_by_id(convocation_id)
+        if not existing:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Convocatoria no encontrada")
+        if existing.created_by != current_user.clerk_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permisos")
+        
         convocation = await use_cases.activate_convocation(convocation_id, current_user.clerk_id)
         return ConvocationResponseDTO(**convocation.to_dict())
         
@@ -359,16 +405,23 @@ async def activate_convocation(
     "/{convocation_id}/deactivate",
     response_model=ConvocationResponseDTO,
     summary="Desactivar convocatoria",
-    description="Desactivar una convocatoria específica"
+    description="Desactivar una convocatoria propia"
 )
 async def deactivate_convocation(
     convocation_id: str,
     use_cases: ConvocationManagementUseCases = Depends(get_convocation_use_cases),
     current_user: User = Depends(get_current_user)
 ):
-    """Desactivar convocatoria"""
+    """Desactivar convocatoria - Solo el creador"""
     
     try:
+        # Verificar propiedad
+        existing = await use_cases.get_convocation_by_id(convocation_id)
+        if not existing:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Convocatoria no encontrada")
+        if existing.created_by != current_user.clerk_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permisos")
+        
         convocation = await use_cases.deactivate_convocation(convocation_id, current_user.clerk_id)
         return ConvocationResponseDTO(**convocation.to_dict())
         
@@ -386,16 +439,23 @@ async def deactivate_convocation(
     "/{convocation_id}/publish",
     response_model=ConvocationResponseDTO,
     summary="Publicar convocatoria",
-    description="Publicar convocatoria (hacerla visible en formularios)"
+    description="Publicar convocatoria propia (hacerla visible en formularios)"
 )
 async def publish_convocation(
     convocation_id: str,
     use_cases: ConvocationManagementUseCases = Depends(get_convocation_use_cases),
     current_user: User = Depends(get_current_user)
 ):
-    """Publicar convocatoria"""
+    """Publicar convocatoria - Solo el creador"""
     
     try:
+        # Verificar propiedad
+        existing = await use_cases.get_convocation_by_id(convocation_id)
+        if not existing:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Convocatoria no encontrada")
+        if existing.created_by != current_user.clerk_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permisos")
+        
         convocation = await use_cases.publish_convocation(convocation_id, current_user.clerk_id)
         return ConvocationResponseDTO(**convocation.to_dict())
         

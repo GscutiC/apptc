@@ -28,6 +28,13 @@ class ApplicationMapper(BaseMapper):
         """Convertir TechoPropioApplication a documento MongoDB"""
         try:
             document = {
+                # ✅ CAMPOS DE CÓDIGO Y CONVOCATORIA
+                "application_number": application.application_number,
+                "convocation_code": application.convocation_code,
+                "registration_year": application.registration_year,
+                "sequential_number": application.sequential_number,
+                "registration_date": application.registration_date,
+                
                 "status": cls.safe_enum_to_value(application.status),
                 "priority_score": float(application.priority_score),
                 "user_id": application.user_id,  # ✅ CRÍTICO: ID del usuario propietario
@@ -93,6 +100,13 @@ class ApplicationMapper(BaseMapper):
             application.id = str(document["_id"])
             application.user_id = document.get("user_id")  # ✅ CRÍTICO: Restaurar user_id
             application.created_by = document.get("created_by", "system")
+            
+            # ✅ RESTAURAR CAMPOS DE CÓDIGO Y CONVOCATORIA
+            application.application_number = document.get("application_number")
+            application.convocation_code = document.get("convocation_code")
+            application.registration_year = document.get("registration_year")
+            application.sequential_number = document.get("sequential_number")
+            application.registration_date = document.get("registration_date")
             
             # Restaurar metadatos
             application.status = ApplicationStatus(document["status"])

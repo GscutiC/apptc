@@ -166,29 +166,36 @@ class MongoConvocationRepository(ConvocationRepository):
 
     async def get_all_convocations(
         self,
+        user_id: str,
         skip: int = 0,
         limit: int = 100,
         include_inactive: bool = False
     ) -> List[Convocation]:
-        """Obtener todas las convocatorias con paginación"""
-        logger.info(f"✅ get_all_convocations LLAMADO - skip={skip}, limit={limit}")
-        query = {} if include_inactive else {"is_active": True}
+        """Obtener convocatorias del usuario con paginación"""
+        logger.info(f"✅ get_all_convocations LLAMADO - user_id={user_id}, skip={skip}, limit={limit}")
+        query = {"created_by": user_id}
+        if not include_inactive:
+            query["is_active"] = True
         cursor = self.collection.find(query).sort("created_at", -1).skip(skip).limit(limit)
         logger.info(f"✅ Cursor creado: {type(cursor)}")
         docs = await cursor.to_list(length=limit)  # Convertir cursor async a lista
-        logger.info(f"✅ Documentos obtenidos: {len(docs)}")
+        logger.info(f"✅ Documentos obtenidos: {len(docs)} para usuario {user_id}")
         return [self._dict_to_entity(doc) for doc in docs]
 
-    async def get_active_convocations(self) -> List[Convocation]:
-        """Obtener solo convocatorias activas"""
-        cursor = self.collection.find({"is_active": True}).sort("created_at", -1)
+    async def get_active_convocations(self, user_id: str) -> List[Convocation]:
+        """Obtener convocatorias activas del usuario"""
+        cursor = self.collection.find({
+            "created_by": user_id,
+            "is_active": True
+        }).sort("created_at", -1)
         docs = await cursor.to_list(length=None)
         return [self._dict_to_entity(doc) for doc in docs]
 
-    async def get_current_convocations(self) -> List[Convocation]:
-        """Obtener convocatorias vigentes (en período actual)"""
+    async def get_current_convocations(self, user_id: str) -> List[Convocation]:
+        """Obtener convocatorias vigentes del usuario (en período actual)"""
         today = datetime.combine(date.today(), datetime.min.time())
         cursor = self.collection.find({
+            "created_by": user_id,
             "is_active": True,
             "start_date": {"$lte": today},
             "end_date": {"$gte": today}
@@ -196,35 +203,41 @@ class MongoConvocationRepository(ConvocationRepository):
         docs = await cursor.to_list(length=None)
         return [self._dict_to_entity(doc) for doc in docs]
 
-    async def get_published_convocations(self) -> List[Convocation]:
-        """Obtener convocatorias publicadas"""
+    async def get_published_convocations(self, user_id: str) -> List[Convocation]:
+        """Obtener convocatorias publicadas del usuario"""
         cursor = self.collection.find({
+            "created_by": user_id,
             "is_active": True,
             "is_published": True
         }).sort("created_at", -1)
         docs = await cursor.to_list(length=None)
         return [self._dict_to_entity(doc) for doc in docs]
 
-    async def get_convocations_by_year(self, year: int) -> List[Convocation]:
-        """Obtener convocatorias de un año específico"""
-        cursor = self.collection.find({"year": year}).sort("sequential_number", 1)
+    async def get_convocations_by_year(self, user_id: str, year: int) -> List[Convocation]:
+        """Obtener convocatorias del usuario de un año específico"""
+        cursor = self.collection.find({
+            "created_by": user_id,
+            "year": year
+        }).sort("sequential_number", 1)
         docs = await cursor.to_list(length=None)
         return [self._dict_to_entity(doc) for doc in docs]
 
-    async def get_upcoming_convocations(self) -> List[Convocation]:
-        """Obtener convocatorias futuras"""
+    async def get_upcoming_convocations(self, user_id: str) -> List[Convocation]:
+        """Obtener convocatorias futuras del usuario"""
         today = datetime.combine(date.today(), datetime.min.time())
         cursor = self.collection.find({
+            "created_by": user_id,
             "is_active": True,
             "start_date": {"$gt": today}
         }).sort("start_date", 1)
         docs = await cursor.to_list(length=None)
         return [self._dict_to_entity(doc) for doc in docs]
 
-    async def get_expired_convocations(self) -> List[Convocation]:
-        """Obtener convocatorias expiradas"""
+    async def get_expired_convocations(self, user_id: str) -> List[Convocation]:
+        """Obtener convocatorias expiradas del usuario"""
         today = datetime.combine(date.today(), datetime.min.time())
         cursor = self.collection.find({
+            "created_by": user_id,
             "end_date": {"$lt": today}
         }).sort("end_date", -1)
         docs = await cursor.to_list(length=None)
@@ -254,9 +267,59 @@ class MongoConvocationRepository(ConvocationRepository):
 
     async def count_applications_by_convocation(self, convocation_code: str) -> int:
         """Contar solicitudes asociadas a una convocatoria"""
-        # Aquí deberías contar en la colección de applications
-        # Por ahora retorna 0 (implementar cuando tengamos la colección de solicitudes)
-        return 0
+        # Contar en la colección de applications
+        try:
+            applications_collection = self.db.techo_propio_applications
+            count = await applications_collection.count_documents({
+                "convocation_code": convocation_code
+            })
+            return count
+        except Exception as e:
+            logger.error(f"Error contando solicitudes de convocatoria {convocation_code}: {e}")
+            return 0
+    
+    async def get_next_application_sequential(self, convocation_code: str) -> int:
+        """
+        Obtener el siguiente número secuencial de solicitud para una convocatoria
+        
+        Usa findOneAndUpdate con $inc para garantizar atomicidad y evitar duplicados.
+        Crea automáticamente el contador si no existe (upsert=True).
+        
+        Args:
+            convocation_code: Código de la convocatoria (ej: "CONV-2025-01")
+            
+        Returns:
+            int: Siguiente número secuencial (1, 2, 3, ...)
+            
+        Example:
+            >>> sequential = await repo.get_next_application_sequential("CONV-2025-01")
+            >>> print(sequential)  # 1 (primera vez), 2 (segunda vez), etc.
+        """
+        try:
+            # Colección separada para contadores
+            counters_collection = self.db.convocation_application_counters
+            
+            # findOneAndUpdate atómico con $inc
+            from pymongo import ReturnDocument
+            result = await counters_collection.find_one_and_update(
+                {"convocation_code": convocation_code},
+                {"$inc": {"count": 1}},
+                upsert=True,  # Crear si no existe
+                return_document=ReturnDocument.AFTER
+            )
+            
+            sequential = result["count"]
+            logger.info(f"✅ Siguiente secuencial para {convocation_code}: {sequential}")
+            
+            return sequential
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo secuencial para {convocation_code}: {e}")
+            # Fallback: usar timestamp para garantizar unicidad
+            import time
+            fallback = int(time.time()) % 100000
+            logger.warning(f"⚠️ Usando fallback secuencial: {fallback}")
+            return fallback
 
     # ==================== OPERACIONES MASIVAS ====================
 

@@ -35,6 +35,10 @@ class ApplicationMapper:
         """
         document = {
             "application_number": application.application_number,
+            "convocation_code": application.convocation_code,
+            "registration_year": application.registration_year,
+            "sequential_number": application.sequential_number,
+            "registration_date": application.registration_date,
             "status": application.status.value,
             "created_at": application.created_at,
             "updated_at": application.updated_at,
@@ -163,7 +167,11 @@ class ApplicationMapper:
         
         # Crear entidad
         application = TechoPropioApplication(
-            application_number=document["application_number"],
+            application_number=document.get("application_number"),
+            convocation_code=document.get("convocation_code"),
+            registration_year=document.get("registration_year"),
+            sequential_number=document.get("sequential_number"),
+            registration_date=document.get("registration_date"),
             status=ApplicationStatus(document["status"]),
             personal_information=personal_info,
             contact_information=contact_info,

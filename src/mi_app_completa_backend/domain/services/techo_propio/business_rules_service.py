@@ -32,8 +32,8 @@ class TechoPropioBusinessRules:
         errors = []
         
         # 1. Validar edad del solicitante principal
-        if application.main_applicant:
-            age = application.main_applicant.age
+        if application.head_of_family:
+            age = application.head_of_family.age
             if age < VALIDATION_CONSTANTS["MIN_AGE"]:
                 errors.append(f"El solicitante debe tener al menos {VALIDATION_CONSTANTS['MIN_AGE']} años")
             if age > VALIDATION_CONSTANTS["MAX_AGE"]:
@@ -60,7 +60,7 @@ class TechoPropioBusinessRules:
             errors.append(f"El tamaño del grupo familiar ({household_size}) excede el máximo permitido")
         
         # 4. Validar que tenga al menos información económica básica
-        if not application.main_applicant_economic:
+        if not application.head_of_family_economic:
             errors.append("La información económica del solicitante principal es obligatoria")
         
         # 5. Si tiene cónyuge, debe tener información económica del cónyuge
@@ -77,7 +77,7 @@ class TechoPropioBusinessRules:
         """
         score = 0
         
-        if not application.main_applicant or not application.main_applicant_economic:
+        if not application.head_of_family or not application.head_of_family_economic:
             return 0
         
         # 1. Puntaje por ingresos (menos ingresos = más puntaje)
@@ -99,7 +99,7 @@ class TechoPropioBusinessRules:
             score += 10
         
         # 3. Puntaje por discapacidad
-        if application.main_applicant.has_disability():
+        if application.head_of_family.has_disability():
             score += 20
         if application.spouse and application.spouse.has_disability():
             score += 15
@@ -113,14 +113,14 @@ class TechoPropioBusinessRules:
         score += minors * 8
         
         # 5. Puntaje por situación laboral
-        if application.main_applicant_economic.employment_situation == EmploymentSituation.UNEMPLOYED:
+        if application.head_of_family_economic.employment_situation == EmploymentSituation.UNEMPLOYED:
             score += 15
-        elif (application.main_applicant_economic.employment_situation == EmploymentSituation.INDEPENDENT and
-              application.main_applicant_economic.work_condition == WorkCondition.INFORMAL):
+        elif (application.head_of_family_economic.employment_situation == EmploymentSituation.INDEPENDENT and
+              application.head_of_family_economic.work_condition == WorkCondition.INFORMAL):
             score += 10
         
         # 6. Puntaje por jefe de hogar mujer soltera con hijos
-        if (application.main_applicant.civil_status == CivilStatus.SINGLE and 
+        if (application.head_of_family.civil_status == CivilStatus.SINGLE and 
             not application.spouse and 
             len(application.household_members) > 0):
             # Asumiendo que se puede inferir género o se agregará después
@@ -137,8 +137,8 @@ class TechoPropioBusinessRules:
         new_dnis = set()
         
         # Recopilar DNIs de la nueva solicitud
-        if new_application.main_applicant:
-            new_dnis.add(new_application.main_applicant.document_number)
+        if new_application.head_of_family:
+            new_dnis.add(new_application.head_of_family.document_number)
         if new_application.spouse:
             new_dnis.add(new_application.spouse.document_number)
         for member in new_application.household_members:
@@ -158,8 +158,8 @@ class TechoPropioBusinessRules:
                 existing_app.status in active_statuses):
                 
                 existing_dnis = set()
-                if existing_app.main_applicant:
-                    existing_dnis.add(existing_app.main_applicant.document_number)
+                if existing_app.head_of_family:
+                    existing_dnis.add(existing_app.head_of_family.document_number)
                 if existing_app.spouse:
                     existing_dnis.add(existing_app.spouse.document_number)
                 for member in existing_app.household_members:
@@ -182,9 +182,9 @@ class TechoPropioBusinessRules:
         if application.status == ApplicationStatus.DRAFT:
             completion = application.get_completion_percentage()
             
-            if not application.main_applicant:
+            if not application.head_of_family:
                 recommendations.append("Completar información del solicitante principal")
-            elif not application.main_applicant.reniec_validated:
+            elif not application.head_of_family.reniec_validated:
                 recommendations.append("Validar DNI del solicitante principal con RENIEC")
             
             if not application.property_info:
@@ -192,11 +192,11 @@ class TechoPropioBusinessRules:
             elif not application.property_info.ubigeo_validated:
                 recommendations.append("Validar ubicación del predio")
             
-            if not application.main_applicant_economic:
+            if not application.head_of_family_economic:
                 recommendations.append("Completar información económica del solicitante")
             
-            if (application.main_applicant and 
-                application.main_applicant.is_married_or_cohabiting() and 
+            if (application.head_of_family and 
+                application.head_of_family.is_married_or_cohabiting() and 
                 not application.spouse):
                 recommendations.append("Agregar información del cónyuge/conviviente")
             
@@ -228,11 +228,11 @@ class TechoPropioBusinessRules:
         """
         errors = []
         
-        if not application.main_applicant:
+        if not application.head_of_family:
             return ["Solicitante principal es obligatorio"]
         
         # 1. Validar edades lógicas
-        main_age = application.main_applicant.age
+        main_age = application.head_of_family.age
         
         if application.spouse:
             spouse_age = application.spouse.age

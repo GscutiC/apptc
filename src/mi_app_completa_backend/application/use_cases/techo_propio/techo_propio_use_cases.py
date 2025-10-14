@@ -17,6 +17,7 @@ from ....infrastructure.services.government_apis.ubigeo_validation_service impor
 
 # Importar repositorio y servicios de infraestructura
 from ....domain.repositories.techo_propio import TechoPropioRepository
+from ....domain.repositories.techo_propio import ConvocationRepository
 from ....infrastructure.services.government_apis.reniec_service import ReniecService
 
 # Importar DTOs
@@ -50,15 +51,17 @@ class TechoPropioUseCases:
     def __init__(
         self,
         repository: TechoPropioRepository,
+        convocation_repository: Optional[ConvocationRepository],
         reniec_service: ReniecService,
         ubigeo_service: UbigeoValidationService
     ):
         self.repository = repository
+        self.convocation_repository = convocation_repository
         self.reniec_service = reniec_service
         self.ubigeo_service = ubigeo_service
         
         # Inicializar casos de uso
-        self.create_use_case = CreateApplicationUseCase(repository)
+        self.create_use_case = CreateApplicationUseCase(repository, convocation_repository)
         self.update_use_case = UpdateApplicationUseCase(repository)
         self.query_use_case = QueryApplicationsUseCase(repository)
         self.validate_dni_use_case = ValidateDniUseCase(reniec_service)
