@@ -3,9 +3,13 @@ Casos de uso para crear solicitudes Techo Propio
 Orquesta las entidades de dominio y aplica reglas de negocio
 """
 
+import os
+import logging
 from typing import Optional, List, Tuple
 from datetime import datetime
 from decimal import Decimal
+
+logger = logging.getLogger(__name__)
 
 # Importar entidades de dominio
 from ....domain.entities.techo_propio import (
@@ -32,10 +36,19 @@ class CreateApplicationUseCase:
     Caso de uso para crear nueva solicitud Techo Propio
     Coordina la creación de todas las entidades relacionadas
     """
-    
+
     def __init__(self, repository: TechoPropioRepository):
         self.repository = repository
         self.business_rules = TechoPropioBusinessRules()
+
+        # ✅ MEJORA: Flag de entorno para modo desarrollo
+        self.dev_mode = os.getenv("DEV_MODE", "false").lower() == "true"
+        self.skip_dni_validation = os.getenv("SKIP_DNI_VALIDATION", "false").lower() == "true"
+
+        if self.dev_mode:
+            logger.warning("⚠️  MODO DESARROLLO ACTIVADO - Validaciones reducidas")
+        if self.skip_dni_validation:
+            logger.warning("⚠️  VALIDACIÓN DE DNI DESACTIVADA - Solo para desarrollo")
     
     async def execute(
         self, 
@@ -74,23 +87,43 @@ class CreateApplicationUseCase:
         return response_dto
     
     async def _validate_unique_dnis(self, dto: TechoPropioApplicationCreateDTO) -> None:
-        """Validar que los DNIs no estén duplicados en el sistema"""
+        """
+        Validar que los DNIs no estén duplicados en el sistema
+
+        ✅ MEJORA: Controlado por flags de entorno
+        - PRODUCCIÓN: Validación completa activada
+        - DESARROLLO: Puede desactivarse con SKIP_DNI_VALIDATION=true
+        """
+        # Si está en modo desarrollo y se permite duplicados, salir
+        if self.skip_dni_validation:
+            logger.warning("⚠️  Saltando validación de DNIs únicos (SKIP_DNI_VALIDATION=true)")
+            return
+
         all_dnis = set()
-        
-        # ✅ NUEVA LÓGICA: Recopilar DNIs incluyendo datos de usuario
-        all_dnis.add(dto.user_data.dni)  # DNI del usuario
+
+        # Recopilar todos los DNIs de la solicitud
+        all_dnis.add(dto.user_data.dni)  # DNI del usuario (control interno)
         all_dnis.add(dto.head_of_family.document_number)  # DNI del jefe de familia
+
         if dto.spouse:
             all_dnis.add(dto.spouse.document_number)
+
         for member in dto.household_members:
             all_dnis.add(member.document_number)
-        
-        # TEMPORALMENTE DESHABILITADO PARA DESARROLLO
-        # Verificar cada DNI en el sistema
-        # for dni in all_dnis:
-        #     exists = await self.repository.check_dni_exists_in_applications(dni)
-        #     if exists:
-        #         raise ValueError(f"El DNI {dni} ya está registrado en otra solicitud activa")
+
+        # ✅ PRODUCCIÓN: Verificar cada DNI en el sistema
+        logger.info(f"Validando {len(all_dnis)} DNIs únicos en el sistema")
+
+        for dni in all_dnis:
+            exists = await self.repository.check_dni_exists_in_applications(dni)
+            if exists:
+                logger.error(f"DNI duplicado detectado: {dni}")
+                raise ValueError(
+                    f"El DNI {dni} ya está registrado en otra solicitud activa. "
+                    f"Cada persona solo puede estar en una solicitud a la vez."
+                )
+
+        logger.info("✅ Validación de DNIs únicos completada exitosamente")
     
     async def _create_application_entities(
         self, 
@@ -232,26 +265,42 @@ class CreateApplicationUseCase:
         return application
     
     async def _apply_business_rules(self, application: TechoPropioApplication) -> None:
-        """TEMPORALMENTE DESHABILITADO PARA DESARROLLO - Aplicar reglas de negocio y validaciones"""
-        
-        # TODAS LAS VALIDACIONES COMENTADAS PARA DESARROLLO
+        """
+        Aplicar reglas de negocio y validaciones
+
+        ✅ MEJORA: Controlado por flags de entorno
+        - PRODUCCIÓN: Todas las validaciones activas
+        - DESARROLLO: Puede desactivarse con DEV_MODE=true
+        """
+        if self.dev_mode:
+            logger.warning("⚠️  Saltando validaciones de negocio (DEV_MODE=true)")
+            logger.info("📝 En producción se validarán: elegibilidad, consistencia familiar, puntaje de prioridad")
+            return
+
+        logger.info("Aplicando reglas de negocio...")
+
         # 1. Validar criterios de elegibilidad
-        # is_eligible, errors = self.business_rules.validate_eligibility_criteria(application)
-        # if not is_eligible:
-        #     raise ValueError(f"La solicitud no cumple criterios de elegibilidad: {'; '.join(errors)}")
-        # 
-        # # 2. Validar consistencia familiar
-        # family_errors = self.business_rules.validate_family_consistency(application)
-        # if family_errors:
-        #     raise ValueError(f"Inconsistencias familiares detectadas: {'; '.join(family_errors)}")
-        # 
-        # # 3. Calcular puntaje de prioridad
-        # priority_score = self.business_rules.calculate_priority_score(application)
-        # # Nota: El puntaje se calcula pero no se almacena en la entidad directamente
-        # # Se puede usar para logs o análisis posterior
-        
-        # SOLO HACER LOG PARA DESARROLLO
-        print("🔧 [DEV MODE] Validaciones de negocio deshabilitadas")
+        is_eligible, errors = self.business_rules.validate_eligibility_criteria(application)
+        if not is_eligible:
+            logger.error(f"Solicitud no cumple criterios de elegibilidad: {errors}")
+            raise ValueError(f"La solicitud no cumple criterios de elegibilidad: {'; '.join(errors)}")
+
+        logger.info("✅ Criterios de elegibilidad validados")
+
+        # 2. Validar consistencia familiar
+        family_errors = self.business_rules.validate_family_consistency(application)
+        if family_errors:
+            logger.error(f"Inconsistencias familiares: {family_errors}")
+            raise ValueError(f"Inconsistencias familiares detectadas: {'; '.join(family_errors)}")
+
+        logger.info("✅ Consistencia familiar validada")
+
+        # 3. Calcular puntaje de prioridad
+        priority_score = self.business_rules.calculate_priority_score(application)
+        application.priority_score = priority_score
+
+        logger.info(f"✅ Puntaje de prioridad calculado: {priority_score:.2f}")
+        logger.info("✅ Todas las reglas de negocio aplicadas correctamente")
     
     async def _convert_to_response_dto(
         self, 
