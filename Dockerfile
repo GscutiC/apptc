@@ -16,7 +16,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copiar código fuente
 COPY src/ src/
 COPY start_server.py .
-COPY .env.production .env
 
 # Crear usuario no-root para seguridad
 RUN groupadd -r appuser && useradd -r -g appuser appuser
@@ -34,5 +33,5 @@ ENV PYTHONPATH=/app/src
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Comando de inicio usando nuestro script mejorado
-CMD ["python", "start_server.py", "--env", "production"]
+# Comando de inicio (Render pasará las variables de entorno automáticamente)
+CMD ["python", "start_server.py"]
