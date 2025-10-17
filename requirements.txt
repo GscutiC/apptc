@@ -10,10 +10,12 @@ cryptography>=41.0.0
 passlib>=1.7.0
 bcrypt>=4.0.0
 requests>=2.25.0
+httpx>=0.24.0
 aiofiles>=23.0.0
 python-multipart>=0.0.6
 pytest>=7.0.0
 pytest-asyncio>=0.20.0
 black>=23.0.0
 flake8>=6.0.0
-mypy>=1.0.0tzdata>=2025.2  # Datos de zonas horarias para Windows (America/Lima)
+mypy>=1.0.0
+tzdata>=2025.2
