@@ -66,7 +66,7 @@ if __name__ == "__main__":
     setup_environment(args)
     
     # Importar configuración después de establecer el entorno
-    from mi_app_completa_backend.infrastructure.config.settings import settings
+    from backend.infrastructure.config.settings import settings
     import uvicorn
     
     # Usar argumentos de CLI si se proporcionan, sino usar configuración
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     print(f"[DEBUG] {'Activado' if settings.debug else 'Desactivado'}")
     
     uvicorn.run(
-        "mi_app_completa_backend.infrastructure.web.fastapi.main:app",
+        "backend.infrastructure.web.fastapi.main:app",
         host=host,
         port=port,
         reload=reload_mode,
