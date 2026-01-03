@@ -11,10 +11,67 @@ logger = get_logger(__name__)
 class MongoUserRepository(UserRepository):
     """Implementación MongoDB para usuarios"""
     
+    _indexes_created = False  # Flag de clase para evitar crear índices múltiples veces
+    
     def __init__(self, database: AsyncIOMotorDatabase):
         self.db = database
         self.users_collection = database.users
         self.roles_collection = database.roles
+    
+    async def ensure_indexes(self):
+        """Crear índices necesarios (solo una vez por instancia de aplicación)"""
+        if MongoUserRepository._indexes_created:
+            return
+        
+        try:
+            # Índice único para clerk_id - CRÍTICO para evitar duplicados
+            await self.users_collection.create_index(
+                "clerk_id", 
+                unique=True, 
+                name="clerk_id_unique"
+            )
+            # Índice para email (no único porque puede ser vacío)
+            await self.users_collection.create_index(
+                "email", 
+                name="email_index"
+            )
+            logger.info("✅ Índices de usuarios creados correctamente")
+            MongoUserRepository._indexes_created = True
+        except Exception as e:
+            # Si el índice ya existe, no es un error
+            if "already exists" in str(e).lower() or "duplicate key" not in str(e).lower():
+                MongoUserRepository._indexes_created = True
+                logger.info("ℹ️ Índices de usuarios ya existían")
+            else:
+                logger.warning(f"⚠️ Error creando índices: {e}")
+    
+    async def get_or_create_user(self, user_data: UserCreate) -> tuple[User, bool]:
+        """Obtener usuario existente o crear uno nuevo. Retorna (usuario, fue_creado)"""
+        await self.ensure_indexes()
+        
+        # Intentar obtener usuario existente
+        existing = await self.get_user_by_clerk_id(user_data.clerk_id)
+        if existing:
+            return existing, False
+        
+        # Intentar crear con manejo de condición de carrera
+        try:
+            new_user = await self.create_user(user_data)
+            return new_user, True
+        except ValueError as e:
+            # Usuario fue creado por otra request concurrente
+            if "ya existe" in str(e):
+                existing = await self.get_user_by_clerk_id(user_data.clerk_id)
+                if existing:
+                    return existing, False
+            raise
+        except Exception as e:
+            # Manejar error de duplicado de MongoDB
+            if "duplicate key" in str(e).lower() or "E11000" in str(e):
+                existing = await self.get_user_by_clerk_id(user_data.clerk_id)
+                if existing:
+                    return existing, False
+            raise
     
     async def create_user(self, user_data: UserCreate) -> User:
         """Crear un nuevo usuario"""

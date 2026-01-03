@@ -287,6 +287,95 @@ async def debug_create_user(user_data: dict):
             "message": f"Error: {str(e)}"
         }
 
+@app.post("/debug/cleanup-duplicate-users")
+async def debug_cleanup_duplicate_users():
+    """
+    Endpoint para limpiar usuarios duplicados en la base de datos.
+    Mantiene el registro más reciente (con más datos) y elimina los duplicados.
+    """
+    try:
+        from ....infrastructure.config.database import get_database
+        
+        db = get_database()
+        users_collection = db.users
+        
+        # Encontrar clerk_ids duplicados
+        pipeline = [
+            {"$group": {
+                "_id": "$clerk_id",
+                "count": {"$sum": 1},
+                "ids": {"$push": "$_id"},
+                "emails": {"$push": "$email"},
+                "created_ats": {"$push": "$created_at"}
+            }},
+            {"$match": {"count": {"$gt": 1}}}
+        ]
+        
+        duplicates = await users_collection.aggregate(pipeline).to_list(None)
+        
+        cleaned_count = 0
+        details = []
+        
+        for dup in duplicates:
+            clerk_id = dup["_id"]
+            user_ids = dup["ids"]
+            
+            # Obtener todos los documentos de este clerk_id
+            users = await users_collection.find({"clerk_id": clerk_id}).to_list(None)
+            
+            # Ordenar: preferir los que tienen email, luego por fecha de creación (más reciente primero)
+            def score_user(user):
+                score = 0
+                if user.get("email") and user["email"] != "":
+                    score += 100
+                if user.get("first_name"):
+                    score += 10
+                if user.get("last_name"):
+                    score += 10
+                if user.get("full_name"):
+                    score += 10
+                return score
+            
+            users_sorted = sorted(users, key=lambda u: (score_user(u), u.get("created_at", "")), reverse=True)
+            
+            # Mantener el primero (mejor), eliminar el resto
+            keep_user = users_sorted[0]
+            delete_users = users_sorted[1:]
+            
+            for user_to_delete in delete_users:
+                await users_collection.delete_one({"_id": user_to_delete["_id"]})
+                cleaned_count += 1
+            
+            details.append({
+                "clerk_id": clerk_id,
+                "kept_id": str(keep_user["_id"]),
+                "kept_email": keep_user.get("email", ""),
+                "deleted_count": len(delete_users)
+            })
+        
+        # Crear índice único después de limpiar (si no existe)
+        try:
+            await users_collection.create_index("clerk_id", unique=True, name="clerk_id_unique")
+            index_created = True
+        except Exception as idx_err:
+            index_created = "already exists" in str(idx_err).lower()
+        
+        return {
+            "success": True,
+            "message": f"Limpieza completada: {cleaned_count} duplicados eliminados",
+            "duplicates_found": len(duplicates),
+            "records_deleted": cleaned_count,
+            "index_created": index_created,
+            "details": details
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error en cleanup_duplicate_users: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }
+
 @app.post("/debug/refresh-user-from-clerk/{clerk_id}")
 async def debug_refresh_user_from_clerk(clerk_id: str):
     """Endpoint para actualizar un usuario existente con datos frescos de Clerk"""
