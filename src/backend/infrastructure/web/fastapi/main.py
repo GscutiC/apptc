@@ -177,6 +177,103 @@ async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "service": "mi_app_completa_backend", "version": "1.0.1", "debug_endpoints": "active"}
 
+
+@app.post("/api/init")
+async def initialize_system():
+    """
+    Endpoint público para inicializar datos del sistema.
+    Puede ser llamado manualmente si la inicialización al startup falla.
+    Es idempotente (puede llamarse múltiples veces sin problema).
+    """
+    try:
+        from ....infrastructure.services.initialization_service import DataInitializationService
+        from ....infrastructure.config.database import get_database
+        
+        db = get_database()
+        
+        # Crear una nueva instancia para forzar reinicialización
+        service = DataInitializationService(db)
+        result = await service.initialize_all()
+        
+        return {
+            "success": True,
+            "message": "System data initialized successfully",
+            "details": result
+        }
+    except Exception as e:
+        logger.error(f"❌ Error en inicialización manual: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"Initialization failed: {str(e)}"
+            }
+        )
+
+
+@app.get("/api/init/status")
+async def initialization_status():
+    """
+    Verificar el estado de inicialización del sistema.
+    Retorna información sobre qué datos existen.
+    """
+    try:
+        from ....infrastructure.config.database import get_database
+        from ....domain.value_objects.permissions import DefaultRoles
+        
+        db = get_database()
+        
+        # Verificar roles
+        roles_collection = db["roles"]
+        roles_count = await roles_collection.count_documents({})
+        required_roles = list(DefaultRoles.ROLES_CONFIG.keys())
+        existing_roles = []
+        missing_roles = []
+        
+        for role_name in required_roles:
+            exists = await roles_collection.find_one({"name": role_name})
+            if exists:
+                existing_roles.append(role_name)
+            else:
+                missing_roles.append(role_name)
+        
+        # Verificar configuración de interfaz
+        config_collection = db["interface_configurations"]
+        configs_count = await config_collection.count_documents({})
+        global_config = await config_collection.find_one({"clerk_id": "__global__"})
+        
+        # Verificar usuarios
+        users_collection = db["users"]
+        users_count = await users_collection.count_documents({})
+        
+        is_initialized = len(missing_roles) == 0
+        
+        return {
+            "initialized": is_initialized,
+            "roles": {
+                "total": roles_count,
+                "required": required_roles,
+                "existing": existing_roles,
+                "missing": missing_roles
+            },
+            "interface_config": {
+                "total": configs_count,
+                "has_global": global_config is not None
+            },
+            "users": {
+                "total": users_count
+            }
+        }
+    except Exception as e:
+        logger.error(f"❌ Error verificando estado: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": str(e)
+            }
+        )
+
+
 @app.get("/debug/cors")
 async def debug_cors():
     """Debug endpoint to test CORS"""
@@ -795,6 +892,40 @@ async def test_permissions(
         result["permissions_test"][perm] = perm in user_permissions
     
     return result
+
+
+# ============================================================================
+# EVENTOS DE CICLO DE VIDA DE LA APLICACIÓN
+# ============================================================================
+
+@app.on_event("startup")
+async def startup_event():
+    """
+    Inicializar datos del sistema al arrancar la aplicación.
+    Asegura que existan roles, configuración, etc.
+    """
+    try:
+        logger.info("🚀 Iniciando aplicación...")
+        
+        # Importar servicio de inicialización
+        from ....infrastructure.services.initialization_service import initialize_system_data
+        from ....infrastructure.config.database import get_database
+        
+        # Obtener base de datos
+        db = get_database()
+        
+        # Inicializar datos del sistema
+        result = await initialize_system_data(db)
+        
+        if result.get("status") == "success":
+            logger.info("✅ Datos del sistema inicializados correctamente")
+        else:
+            logger.warning(f"⚠️ Inicialización: {result}")
+            
+    except Exception as e:
+        logger.error(f"❌ Error durante inicialización del sistema: {e}")
+        # No fallar el startup, solo registrar el error
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
