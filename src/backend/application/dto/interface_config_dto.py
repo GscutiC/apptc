@@ -7,6 +7,34 @@ from pydantic import BaseModel, validator
 from datetime import datetime
 
 
+def complete_color_shades(color_dict: Dict[str, str]) -> Dict[str, str]:
+    """
+    Completa los tonos de color faltantes interpolando o usando valores por defecto.
+    Esto permite que configuraciones guardadas con menos tonos sigan funcionando.
+    """
+    # Colores base por defecto (gris neutro)
+    default_shades = {
+        '50': '#f9fafb', '100': '#f3f4f6', '200': '#e5e7eb',
+        '300': '#d1d5db', '400': '#9ca3af', '500': '#6b7280',
+        '600': '#4b5563', '700': '#374151', '800': '#1f2937', '900': '#111827'
+    }
+    
+    required_shades = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900']
+    completed = {}
+    
+    # Encontrar el color base (preferiblemente 500)
+    base_color = color_dict.get('500', color_dict.get('600', color_dict.get('700', '#6b7280')))
+    
+    for shade in required_shades:
+        if shade in color_dict:
+            completed[shade] = color_dict[shade]
+        else:
+            # Usar el default o intentar derivar del color base
+            completed[shade] = default_shades.get(shade, base_color)
+    
+    return completed
+
+
 class ColorConfigDTO(BaseModel):
     """DTO para configuración de colores"""
     primary: Dict[str, str]
@@ -14,13 +42,14 @@ class ColorConfigDTO(BaseModel):
     accent: Dict[str, str]
     neutral: Dict[str, str]
 
-    @validator('primary', 'secondary', 'accent', 'neutral')
-    def validate_color_shades(cls, v):
-        required_shades = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900']
-        for shade in required_shades:
-            if shade not in v:
-                raise ValueError(f'Missing color shade: {shade}')
-        return v
+    @validator('primary', 'secondary', 'accent', 'neutral', pre=True)
+    def validate_and_complete_color_shades(cls, v):
+        """Valida y completa los tonos de color faltantes"""
+        if not isinstance(v, dict):
+            raise ValueError('Color config must be a dictionary')
+        
+        # Completar tonos faltantes automáticamente
+        return complete_color_shades(v)
 
 
 class TypographyConfigDTO(BaseModel):
