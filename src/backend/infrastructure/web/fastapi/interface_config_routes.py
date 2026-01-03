@@ -36,6 +36,92 @@ def get_interface_config_use_cases() -> InterfaceConfigUseCases:
     history_repo = MongoConfigHistoryRepository(db)
     return InterfaceConfigUseCases(config_repo, preset_repo, history_repo)
 
+
+# Configuración por defecto completa
+DEFAULT_CONFIG = {
+    "id": "default-config",
+    "theme": {
+        "mode": "light",
+        "name": "Configuración por Defecto",
+        "colors": {
+            "primary": {
+                "50": "#ecfdf5", "100": "#d1fae5", "200": "#a7f3d0",
+                "300": "#6ee7b7", "400": "#34d399", "500": "#10b981",
+                "600": "#059669", "700": "#047857", "800": "#065f46", "900": "#064e3b"
+            },
+            "secondary": {
+                "50": "#f9fafb", "100": "#f3f4f6", "200": "#e5e7eb",
+                "300": "#d1d5db", "400": "#9ca3af", "500": "#6b7280",
+                "600": "#4b5563", "700": "#374151", "800": "#1f2937", "900": "#111827"
+            },
+            "accent": {
+                "50": "#ecfdf5", "100": "#d1fae5", "200": "#a7f3d0",
+                "300": "#6ee7b7", "400": "#34d399", "500": "#10b981",
+                "600": "#059669", "700": "#047857", "800": "#065f46", "900": "#064e3b"
+            },
+            "neutral": {
+                "50": "#f9fafb", "100": "#f3f4f6", "200": "#e5e7eb",
+                "300": "#d1d5db", "400": "#9ca3af", "500": "#6b7280",
+                "600": "#4b5563", "700": "#374151", "800": "#1f2937", "900": "#111827"
+            }
+        },
+        "typography": {
+            "fontFamily": {
+                "primary": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                "secondary": "Georgia, 'Times New Roman', serif",
+                "mono": "Monaco, Consolas, 'Courier New', monospace"
+            },
+            "fontSize": {
+                "xs": "0.75rem", "sm": "0.875rem", "base": "1rem",
+                "lg": "1.125rem", "xl": "1.25rem", "2xl": "1.5rem",
+                "3xl": "1.875rem", "4xl": "2.25rem"
+            },
+            "fontWeight": {
+                "light": 300, "normal": 400, "medium": 500,
+                "semibold": 600, "bold": 700
+            }
+        },
+        "layout": {
+            "borderRadius": {
+                "none": "0", "sm": "0.125rem", "base": "0.25rem",
+                "md": "0.375rem", "lg": "0.5rem", "xl": "0.75rem",
+                "2xl": "1rem", "full": "9999px"
+            },
+            "spacing": {
+                "0": "0", "1": "0.25rem", "2": "0.5rem", "3": "0.75rem",
+                "4": "1rem", "5": "1.25rem", "6": "1.5rem", "8": "2rem"
+            },
+            "shadows": {
+                "sm": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+                "base": "0 1px 3px 0 rgb(0 0 0 / 0.1)",
+                "md": "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                "lg": "0 10px 15px -3px rgb(0 0 0 / 0.1)"
+            }
+        }
+    },
+    "logos": {
+        "mainLogo": {"text": "ScutiTec", "showText": True, "showImage": False},
+        "favicon": {"url": None},
+        "sidebarLogo": {"text": "ScutiTec", "showText": True, "showImage": False, "collapsedText": "ST"}
+    },
+    "branding": {
+        "appName": "ScutiTec",
+        "appDescription": "Soluciones empresariales inteligentes",
+        "tagline": "Tu plataforma de gestión empresarial",
+        "companyName": "ScutiTec",
+        "welcomeMessage": "¡Bienvenido!",
+        "loginPageTitle": "Iniciar Sesión",
+        "loginPageDescription": "Accede a tu cuenta para continuar",
+        "footerText": "© 2024 ScutiTec. Todos los derechos reservados.",
+        "supportEmail": "soporte@scutitec.com"
+    },
+    "customCSS": None,
+    "isActive": True,
+    "createdAt": "2024-01-01T00:00:00.000Z",
+    "updatedAt": "2024-01-01T00:00:00.000Z"
+}
+
+
 @router.get("/current")
 async def get_current_config(
     use_cases: InterfaceConfigUseCases = Depends(get_interface_config_use_cases)
@@ -79,83 +165,16 @@ async def get_current_config_safe(
         if config:
             return config
 
-        # FALLBACK: Crear configuración por defecto en formato correcto
-        logger.warn("No hay configuración en BD, creando configuración por defecto")
-        
-        # Crear configuración que coincida con el archivo interface_config.json del backend
-        fallback_config = await use_cases.create_default_config()
-        
-        return fallback_config
+        # FALLBACK: Devolver configuración por defecto
+        logger.warn("No hay configuración en BD, usando configuración por defecto")
+        return DEFAULT_CONFIG
 
     except Exception as e:
         logger.error(f"Error getting safe config: {e}")
         
-        # ÚLTIMO RECURSO: Configuración mínima de emergencia
-        return {
-            "id": "emergency-config",
-            "theme": {
-                "mode": "light",
-                "name": "Configuración de Emergencia",
-                "colors": {
-                    "primary": {
-                        "50": "#f8fafc", "100": "#f1f5f9", "200": "#e2e8f0",
-                        "300": "#cbd5e1", "400": "#94a3b8", "500": "#64748b",
-                        "600": "#475569", "700": "#334155", "800": "#1e293b", "900": "#0f172a"
-                    },
-                    "secondary": {
-                        "50": "#f8fafc", "100": "#f1f5f9", "200": "#e2e8f0",
-                        "300": "#cbd5e1", "400": "#94a3b8", "500": "#64748b",
-                        "600": "#475569", "700": "#334155", "800": "#1e293b", "900": "#0f172a"
-                    },
-                    "accent": {
-                        "50": "#f8fafc", "100": "#f1f5f9", "200": "#e2e8f0",
-                        "300": "#cbd5e1", "400": "#94a3b8", "500": "#64748b",
-                        "600": "#475569", "700": "#334155", "800": "#1e293b", "900": "#0f172a"
-                    },
-                    "neutral": {
-                        "50": "#f9fafb", "100": "#f3f4f6", "200": "#e5e7eb",
-                        "300": "#d1d5db", "400": "#9ca3af", "500": "#6b7280",
-                        "600": "#4b5563", "700": "#374151", "800": "#1f2937", "900": "#111827"
-                    }
-                },
-                "typography": {
-                    "fontFamily": {
-                        "primary": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-                        "secondary": "Georgia, serif",
-                        "mono": "Monaco, monospace"
-                    },
-                    "fontSize": {
-                        "xs": "0.75rem", "sm": "0.875rem", "base": "1rem",
-                        "lg": "1.125rem", "xl": "1.25rem", "2xl": "1.5rem"
-                    },
-                    "fontWeight": {
-                        "light": 300, "normal": 400, "medium": 500, "semibold": 600, "bold": 700
-                    }
-                },
-                "layout": {
-                    "borderRadius": {
-                        "sm": "0.125rem", "base": "0.25rem", "md": "0.375rem",
-                        "lg": "0.5rem", "xl": "0.75rem", "2xl": "1rem"
-                    }
-                }
-            },
-            "logos": {
-                "mainLogo": { "text": "Sistema", "showText": True, "showImage": False },
-                "favicon": {},
-                "sidebarLogo": { "text": "Sistema", "showText": True, "showImage": False, "collapsedText": "S" }
-            },
-            "branding": {
-                "appName": "App",
-                "appDescription": "Conectando con servidor...",
-                "tagline": "Cargando configuración",
-                "companyName": "Sistema",
-                "welcomeMessage": "Conectando..."
-            },
-            "customCSS": None,
-            "isActive": True,
-            "createdAt": "2024-01-01T00:00:00.000Z",
-            "updatedAt": "2024-01-01T00:00:00.000Z"
-        }
+        # ÚLTIMO RECURSO: Devolver configuración por defecto
+        return DEFAULT_CONFIG
+
 
 @router.patch("/partial")
 async def update_partial_config(

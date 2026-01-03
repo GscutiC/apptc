@@ -636,11 +636,45 @@ class InterfaceConfigUseCases:
             else:
                 config.deactivate()
 
+    def _complete_color_shades(self, colors_dict: dict) -> dict:
+        """Completar tonos de color faltantes para evitar errores de validación"""
+        default_shades = {
+            '50': '#f9fafb', '100': '#f3f4f6', '200': '#e5e7eb',
+            '300': '#d1d5db', '400': '#9ca3af', '500': '#6b7280',
+            '600': '#4b5563', '700': '#374151', '800': '#1f2937', '900': '#111827'
+        }
+        required = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900']
+        
+        result = {}
+        for color_name in ['primary', 'secondary', 'accent', 'neutral']:
+            color_values = colors_dict.get(color_name, {})
+            if not isinstance(color_values, dict):
+                color_values = {}
+            
+            completed_color = {}
+            base_color = color_values.get('500', color_values.get('600', default_shades['500']))
+            
+            for shade in required:
+                if shade in color_values:
+                    completed_color[shade] = color_values[shade]
+                else:
+                    completed_color[shade] = default_shades.get(shade, base_color)
+            
+            result[color_name] = completed_color
+        
+        return result
+
     def _config_to_response_dto(self, config: InterfaceConfig) -> InterfaceConfigResponseDTO:
-        """Convertir entidad a DTO de respuesta"""
+        """Convertir entidad a DTO de respuesta con colores completos"""
+        theme_dict = config.theme.to_dict()
+        
+        # Completar colores faltantes antes de crear el DTO
+        if 'colors' in theme_dict:
+            theme_dict['colors'] = self._complete_color_shades(theme_dict['colors'])
+        
         return InterfaceConfigResponseDTO(
             id=config.id,
-            theme=config.theme.to_dict(),
+            theme=theme_dict,
             logos=config.logos.to_dict(),
             branding=config.branding.to_dict(),
             customCSS=config.custom_css,
