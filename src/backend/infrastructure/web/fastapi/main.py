@@ -193,24 +193,41 @@ async def debug_create_user(user_data: dict):
         from ....infrastructure.config.database import get_database
         from ....infrastructure.persistence.mongodb.auth_repository_impl import MongoUserRepository
         from ....domain.entities.auth_models import UserCreate
+        from ....infrastructure.services.clerk_service import clerk_service
         
         db = get_database()
         user_repo = MongoUserRepository(db)
-        
-        # Crear usuario
-        new_user = UserCreate(
-            clerk_id=user_data.get("clerk_id"),
-            email=user_data.get("email", ""),
-            first_name=user_data.get("first_name"),
-            last_name=user_data.get("last_name"),
-            full_name=user_data.get("full_name"),
-            image_url=user_data.get("image_url"),
-            phone_number=user_data.get("phone_number")
-        )
+        clerk_id = user_data.get("clerk_id")
         
         # Verificar si ya existe
-        existing_user = await user_repo.get_user_by_clerk_id(new_user.clerk_id)
+        existing_user = await user_repo.get_user_by_clerk_id(clerk_id)
         if existing_user:
+            # Si existe pero tiene datos vacíos, intentar actualizar desde Clerk
+            if not existing_user.email or existing_user.email == "":
+                clerk_user_data = await clerk_service.get_user_by_id(clerk_id)
+                if clerk_user_data:
+                    user_info = clerk_service.extract_user_info(clerk_user_data)
+                    from ....domain.entities.auth_models import UserUpdate
+                    update_data = UserUpdate(
+                        email=user_info.get("email") or existing_user.email,
+                        first_name=user_info.get("first_name") or existing_user.first_name,
+                        last_name=user_info.get("last_name") or existing_user.last_name,
+                        full_name=user_info.get("full_name") or existing_user.full_name,
+                        image_url=user_info.get("image_url") or existing_user.image_url,
+                        phone_number=user_info.get("phone_number") or existing_user.phone_number
+                    )
+                    updated_user = await user_repo.update_user(clerk_id, update_data)
+                    return {
+                        "success": True,
+                        "message": "Usuario actualizado con datos de Clerk",
+                        "user": {
+                            "id": str(updated_user.id) if updated_user else str(existing_user.id),
+                            "email": updated_user.email if updated_user else existing_user.email,
+                            "full_name": updated_user.full_name if updated_user else existing_user.full_name,
+                            "role": updated_user.role_name if updated_user else existing_user.role_name
+                        }
+                    }
+            
             return {
                 "success": True,
                 "message": "Usuario ya existe",
@@ -220,7 +237,36 @@ async def debug_create_user(user_data: dict):
                     "full_name": existing_user.full_name,
                     "role": existing_user.role_name
                 }
-            }        # Crear nuevo usuario
+            }
+        
+        # Intentar obtener datos de Clerk primero
+        clerk_user_data = await clerk_service.get_user_by_id(clerk_id)
+        if clerk_user_data:
+            user_info = clerk_service.extract_user_info(clerk_user_data)
+            logger.info(f"📥 Creando usuario con datos de Clerk: {user_info}")
+            new_user = UserCreate(
+                clerk_id=clerk_id,
+                email=user_info.get("email", user_data.get("email", "")),
+                first_name=user_info.get("first_name") or user_data.get("first_name"),
+                last_name=user_info.get("last_name") or user_data.get("last_name"),
+                full_name=user_info.get("full_name") or user_data.get("full_name"),
+                image_url=user_info.get("image_url") or user_data.get("image_url"),
+                phone_number=user_info.get("phone_number") or user_data.get("phone_number")
+            )
+        else:
+            # Fallback: usar datos del frontend
+            logger.warning(f"⚠️ No se pudieron obtener datos de Clerk, usando datos del frontend")
+            new_user = UserCreate(
+                clerk_id=clerk_id,
+                email=user_data.get("email", ""),
+                first_name=user_data.get("first_name"),
+                last_name=user_data.get("last_name"),
+                full_name=user_data.get("full_name"),
+                image_url=user_data.get("image_url"),
+                phone_number=user_data.get("phone_number")
+            )
+        
+        # Crear nuevo usuario
         created_user = await user_repo.create_user(new_user)
         
         return {
@@ -235,6 +281,71 @@ async def debug_create_user(user_data: dict):
         }
         
     except Exception as e:
+        logger.error(f"❌ Error en debug_create_user: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }
+
+@app.post("/debug/refresh-user-from-clerk/{clerk_id}")
+async def debug_refresh_user_from_clerk(clerk_id: str):
+    """Endpoint para actualizar un usuario existente con datos frescos de Clerk"""
+    try:
+        from ....infrastructure.config.database import get_database
+        from ....infrastructure.persistence.mongodb.auth_repository_impl import MongoUserRepository
+        from ....domain.entities.auth_models import UserUpdate
+        from ....infrastructure.services.clerk_service import clerk_service
+        
+        db = get_database()
+        user_repo = MongoUserRepository(db)
+        
+        # Verificar que el usuario existe
+        existing_user = await user_repo.get_user_by_clerk_id(clerk_id)
+        if not existing_user:
+            return {
+                "success": False,
+                "message": "Usuario no encontrado en la base de datos"
+            }
+        
+        # Obtener datos actualizados de Clerk
+        clerk_user_data = await clerk_service.get_user_by_id(clerk_id)
+        if not clerk_user_data:
+            return {
+                "success": False,
+                "message": "No se pudieron obtener datos de Clerk"
+            }
+        
+        user_info = clerk_service.extract_user_info(clerk_user_data)
+        
+        # Actualizar usuario
+        update_data = UserUpdate(
+            email=user_info.get("email") or existing_user.email,
+            first_name=user_info.get("first_name"),
+            last_name=user_info.get("last_name"),
+            full_name=user_info.get("full_name"),
+            image_url=user_info.get("image_url"),
+            phone_number=user_info.get("phone_number")
+        )
+        
+        updated_user = await user_repo.update_user(clerk_id, update_data)
+        
+        return {
+            "success": True,
+            "message": "Usuario actualizado con datos de Clerk",
+            "user": {
+                "id": str(updated_user.id) if updated_user else None,
+                "email": updated_user.email if updated_user else None,
+                "first_name": updated_user.first_name if updated_user else None,
+                "last_name": updated_user.last_name if updated_user else None,
+                "full_name": updated_user.full_name if updated_user else None,
+                "image_url": updated_user.image_url if updated_user else None,
+                "role": updated_user.role_name if updated_user else None
+            },
+            "clerk_data": user_info
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error en refresh_user_from_clerk: {str(e)}")
         return {
             "success": False,
             "message": f"Error: {str(e)}"

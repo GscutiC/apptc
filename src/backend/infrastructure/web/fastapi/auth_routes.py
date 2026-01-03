@@ -10,6 +10,7 @@ from ....domain.entities.auth_models import User, Role, UserCreate, UserUpdate, 
 from ....domain.repositories.auth_repository import UserRepository, RoleRepository
 from ...persistence.mongodb.auth_repository_impl import MongoUserRepository, MongoRoleRepository
 from ...config.database import get_database
+from ...services.clerk_service import clerk_service
 from ....application.dto.role_dto import (
     RoleCreateDTO, RoleUpdateDTO, RoleResponseDTO, RoleWithStatsDTO, 
     PermissionCategoryDTO, RoleAssignmentDTO, UserRoleDTO
@@ -107,6 +108,10 @@ async def verify_clerk_token(credentials: HTTPAuthorizationCredentials = Depends
             detail=f"Token verification failed: {str(e)}"
         )
 
+# Logger para auth_routes
+import logging
+auth_logger = logging.getLogger(__name__)
+
 async def get_current_user(
     token_data: dict = Depends(verify_clerk_token),
     user_repo: UserRepository = Depends(get_user_repository)
@@ -122,20 +127,43 @@ async def get_current_user(
 
     user = await user_repo.get_user_with_role(clerk_id)
     if not user:
-        # Si el usuario no existe en nuestra DB, lo creamos desde los datos del token
+        # Si el usuario no existe en nuestra DB, obtenemos sus datos de la API de Clerk
         try:
-            user_data = UserCreate(
-                clerk_id=clerk_id,
-                email=token_data.get("email", ""),
-                first_name=token_data.get("given_name"),
-                last_name=token_data.get("family_name"),
-                full_name=token_data.get("name"),
-                image_url=token_data.get("image_url"),
-                phone_number=token_data.get("phone_number")
-            )
+            # Obtener datos completos del usuario desde la API de Clerk
+            clerk_user_data = await clerk_service.get_user_by_id(clerk_id)
+            
+            if clerk_user_data:
+                # Extraer información normalizada
+                user_info = clerk_service.extract_user_info(clerk_user_data)
+                auth_logger.info(f"📥 Datos de Clerk para nuevo usuario: {user_info}")
+                
+                user_data = UserCreate(
+                    clerk_id=clerk_id,
+                    email=user_info.get("email", ""),
+                    first_name=user_info.get("first_name"),
+                    last_name=user_info.get("last_name"),
+                    full_name=user_info.get("full_name"),
+                    image_url=user_info.get("image_url"),
+                    phone_number=user_info.get("phone_number")
+                )
+            else:
+                # Fallback: usar datos del token (pueden estar vacíos)
+                auth_logger.warning(f"⚠️ No se pudieron obtener datos de Clerk, usando datos del token")
+                user_data = UserCreate(
+                    clerk_id=clerk_id,
+                    email=token_data.get("email", ""),
+                    first_name=token_data.get("given_name"),
+                    last_name=token_data.get("family_name"),
+                    full_name=token_data.get("name"),
+                    image_url=token_data.get("image_url"),
+                    phone_number=token_data.get("phone_number")
+                )
+            
             created_user = await user_repo.create_user(user_data)
             user = await user_repo.get_user_with_role(clerk_id)
+            auth_logger.info(f"✅ Usuario creado exitosamente: {clerk_id}")
         except Exception as e:
+            auth_logger.error(f"❌ Error creando usuario: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error creating user"
