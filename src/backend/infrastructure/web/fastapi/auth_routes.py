@@ -658,3 +658,203 @@ async def get_my_permissions(
         "permission_count": len(permissions),
         "is_super_admin": "*" in permissions or (role_info and role_info["name"] == "super_admin")
     }
+
+
+# ============================================================================
+# ENDPOINTS DE ADMINISTRACIÓN Y CORRECCIÓN DE DATOS
+# ============================================================================
+
+@router.post("/admin/fix-users-without-role", tags=["admin"])
+async def fix_users_without_role_id():
+    """
+    Corrige usuarios que tienen role_name pero no role_id.
+    Este endpoint es público temporalmente para corregir datos existentes.
+    """
+    from datetime import timezone
+    
+    db = get_database()
+    users_collection = db.users
+    roles_collection = db.roles
+    
+    # Primero asegurar que existan los roles
+    from ....domain.value_objects.permissions import DefaultRoles
+    
+    roles_created = []
+    for role_name, role_config in DefaultRoles.ROLES_CONFIG.items():
+        existing = await roles_collection.find_one({"name": role_name})
+        if not existing:
+            role_doc = {
+                "name": role_name,
+                "display_name": role_config["display_name"],
+                "description": role_config["description"],
+                "permissions": role_config["permissions"],
+                "is_active": True,
+                "is_system_role": True,
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc)
+            }
+            await roles_collection.insert_one(role_doc)
+            roles_created.append(role_name)
+    
+    # Obtener todos los roles
+    roles_map = {}
+    async for role in roles_collection.find({}):
+        roles_map[role["name"]] = role["_id"]
+    
+    # Buscar usuarios sin role_id
+    users_fixed = []
+    async for user in users_collection.find({
+        "$or": [
+            {"role_id": None},
+            {"role_id": {"$exists": False}}
+        ]
+    }):
+        role_name = user.get("role_name", "user")
+        role_id = roles_map.get(role_name) or roles_map.get("user")
+        
+        if role_id:
+            await users_collection.update_one(
+                {"_id": user["_id"]},
+                {
+                    "$set": {
+                        "role_id": role_id,
+                        "role_name": role_name if role_name in roles_map else "user",
+                        "updated_at": datetime.now(timezone.utc)
+                    }
+                }
+            )
+            users_fixed.append({
+                "clerk_id": user.get("clerk_id"),
+                "email": user.get("email"),
+                "role_assigned": role_name
+            })
+    
+    return {
+        "success": True,
+        "roles_created": roles_created,
+        "users_fixed": users_fixed,
+        "total_fixed": len(users_fixed)
+    }
+
+
+@router.post("/admin/assign-super-admin", tags=["admin"])
+async def assign_super_admin_to_user(email: str):
+    """
+    Asigna el rol super_admin a un usuario por email.
+    Este endpoint es público temporalmente para configurar el primer super_admin.
+    
+    Args:
+        email: Email del usuario a promover
+    """
+    from datetime import timezone
+    
+    db = get_database()
+    users_collection = db.users
+    roles_collection = db.roles
+    
+    # Buscar el rol super_admin
+    super_admin_role = await roles_collection.find_one({"name": "super_admin"})
+    if not super_admin_role:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Rol super_admin no encontrado. Ejecute primero /admin/fix-users-without-role"
+        )
+    
+    # Buscar el usuario
+    user = await users_collection.find_one({"email": email})
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Usuario con email '{email}' no encontrado"
+        )
+    
+    # Actualizar el usuario
+    result = await users_collection.update_one(
+        {"_id": user["_id"]},
+        {
+            "$set": {
+                "role_id": super_admin_role["_id"],
+                "role_name": "super_admin",
+                "updated_at": datetime.now(timezone.utc)
+            }
+        }
+    )
+    
+    if result.modified_count > 0:
+        return {
+            "success": True,
+            "message": f"Usuario {email} ahora es super_admin",
+            "user": {
+                "clerk_id": user.get("clerk_id"),
+                "email": email,
+                "role_name": "super_admin"
+            }
+        }
+    else:
+        return {
+            "success": False,
+            "message": "El usuario ya es super_admin o no se pudo actualizar"
+        }
+
+
+@router.get("/admin/system-status", tags=["admin"])
+async def get_system_status():
+    """
+    Verifica el estado del sistema: roles, usuarios, configuración.
+    Útil para diagnóstico.
+    """
+    db = get_database()
+    
+    # Contar roles
+    roles_count = await db.roles.count_documents({})
+    roles = []
+    async for role in db.roles.find({}):
+        roles.append({
+            "name": role["name"],
+            "display_name": role.get("display_name"),
+            "is_active": role.get("is_active", True)
+        })
+    
+    # Contar usuarios por rol
+    users_by_role = {}
+    async for user in db.users.find({}):
+        role_name = user.get("role_name", "sin_rol")
+        has_role_id = user.get("role_id") is not None
+        key = f"{role_name} (con_id)" if has_role_id else f"{role_name} (sin_id)"
+        users_by_role[key] = users_by_role.get(key, 0) + 1
+    
+    # Buscar super_admins
+    super_admins = []
+    async for user in db.users.find({"role_name": "super_admin"}):
+        super_admins.append({
+            "email": user.get("email"),
+            "clerk_id": user.get("clerk_id"),
+            "has_role_id": user.get("role_id") is not None
+        })
+    
+    # Contar usuarios con problemas
+    users_without_role_id = await db.users.count_documents({
+        "$or": [
+            {"role_id": None},
+            {"role_id": {"$exists": False}}
+        ]
+    })
+    
+    return {
+        "system_status": "healthy" if roles_count > 0 and users_without_role_id == 0 else "needs_fix",
+        "roles": {
+            "count": roles_count,
+            "list": roles
+        },
+        "users": {
+            "by_role": users_by_role,
+            "without_role_id": users_without_role_id,
+            "super_admins": super_admins
+        },
+        "recommendations": []
+        if roles_count > 0 and users_without_role_id == 0
+        else [
+            "Ejecutar POST /auth/admin/fix-users-without-role" if users_without_role_id > 0 else None,
+            "Ejecutar POST /auth/admin/assign-super-admin?email=tu@email.com" if not super_admins else None
+        ]
+    }

@@ -81,8 +81,14 @@ class MongoUserRepository(UserRepository):
             logger.warning(f"User already exists: {existing.clerk_id}")
             raise ValueError(f"Usuario con clerk_id {user_data.clerk_id} ya existe")
 
-        # Obtener rol por defecto
+        # Obtener rol por defecto - si no existe, inicializar roles
         default_role = await self.roles_collection.find_one({"name": "user"})
+        
+        if not default_role:
+            # Inicializar roles del sistema si no existen
+            logger.info("🔄 Roles no encontrados, inicializando roles del sistema...")
+            await self._ensure_default_roles_exist()
+            default_role = await self.roles_collection.find_one({"name": "user"})
 
         user_dict = user_data.dict()
         user_dict.update({
@@ -92,11 +98,37 @@ class MongoUserRepository(UserRepository):
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc)
         })
+        
+        # Log para depuración
+        if default_role:
+            logger.info(f"✅ Usuario creado con role_id: {default_role['_id']}")
+        else:
+            logger.warning(f"⚠️ Usuario creado sin role_id - roles no disponibles")
 
         result = await self.users_collection.insert_one(user_dict)
         user_dict["_id"] = result.inserted_id
 
         return User(**user_dict)
+    
+    async def _ensure_default_roles_exist(self) -> None:
+        """Asegurar que los roles por defecto existan en la base de datos"""
+        from ...domain.value_objects.permissions import DefaultRoles
+        
+        for role_name, role_config in DefaultRoles.ROLES_CONFIG.items():
+            existing = await self.roles_collection.find_one({"name": role_name})
+            if not existing:
+                role_doc = {
+                    "name": role_name,
+                    "display_name": role_config["display_name"],
+                    "description": role_config["description"],
+                    "permissions": role_config["permissions"],
+                    "is_active": True,
+                    "is_system_role": True,
+                    "created_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(timezone.utc)
+                }
+                await self.roles_collection.insert_one(role_doc)
+                logger.info(f"✅ Rol '{role_name}' creado")
     
     async def get_user_by_clerk_id(self, clerk_id: str) -> Optional[User]:
         """Obtener usuario por ID de Clerk"""
