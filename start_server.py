@@ -50,13 +50,23 @@ def setup_environment(args):
     # Establecer variable de entorno ENVIRONMENT
     os.environ['ENVIRONMENT'] = args.env
     
+    # Configurar la ruta del archivo .env en el directorio backend
+    backend_dir = Path(__file__).parent
+    default_env_file = backend_dir / '.env'
+    
     # Si se especifica un archivo .env personalizado, configurarlo
     if args.env_file:
         env_file_path = Path(args.env_file)
         if not env_file_path.exists():
-            print(f"Error: El archivo .env especificado no existe: {args.env_file}")
+            print(f"❌ Error: El archivo .env especificado no existe: {args.env_file}")
             sys.exit(1)
         os.environ['CUSTOM_ENV_FILE'] = str(env_file_path)
+    elif default_env_file.exists():
+        # Usar el .env del directorio backend
+        os.environ['CUSTOM_ENV_FILE'] = str(default_env_file)
+        print(f"✅ Usando archivo .env: {default_env_file}")
+    else:
+        print(f"⚠️ Advertencia: No se encontró archivo .env en {backend_dir}")
 
 
 if __name__ == "__main__":

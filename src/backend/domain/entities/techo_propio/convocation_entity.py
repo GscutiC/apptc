@@ -55,27 +55,14 @@ class Convocation(TechoPropioBaseEntity):
             raise ValueError("La fecha de inicio no puede ser anterior a 2020")
     
     def _validate_code_format(self) -> None:
-        """Validar formato del código de convocatoria"""
+        """Validar código de convocatoria - acepta cualquier formato"""
         if not self.code:
             raise ValueError("El código de convocatoria es obligatorio")
         
-        # Formato esperado: CONV-YYYY-XX
-        if not self.code.startswith("CONV-"):
-            raise ValueError("El código debe comenzar con 'CONV-'")
-        
-        parts = self.code.split("-")
-        if len(parts) != 3:
-            raise ValueError("Formato de código inválido. Use: CONV-YYYY-XX")
-        
-        try:
-            year = int(parts[1])
-            seq = int(parts[2])
-            if year < 2020 or year > 2030:
-                raise ValueError("Año en el código debe estar entre 2020 y 2030")
-            if seq < 1 or seq > 99:
-                raise ValueError("Número secuencial debe estar entre 01 y 99")
-        except ValueError:
-            raise ValueError("Formato de código inválido. Use: CONV-YYYY-XX")
+        # Código es libre - acepta cualquier combinación de caracteres
+        # La unicidad se valida a nivel de usuario en el repositorio
+        if not self.code.strip():
+            raise ValueError("El código no puede estar vacío")
     
     @property
     def is_current(self) -> bool:

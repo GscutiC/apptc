@@ -23,7 +23,7 @@ class ConvocationStatus(str, Enum):
 
 class ConvocationCreateDTO(BaseModel):
     """DTO para crear nueva convocatoria"""
-    code: str = Field(..., min_length=10, max_length=20, description="Código único de convocatoria")
+    code: str = Field(..., min_length=1, max_length=50, description="Código de convocatoria (libre, único por usuario)")
     title: str = Field(..., min_length=5, max_length=200, description="Título descriptivo")
     description: Optional[str] = Field(None, max_length=1000, description="Descripción detallada")
     start_date: date = Field(..., description="Fecha de inicio")
@@ -34,25 +34,10 @@ class ConvocationCreateDTO(BaseModel):
     
     @validator('code')
     def validate_code_format(cls, v):
-        """Validar formato del código"""
-        if not v.startswith('CONV-'):
-            raise ValueError('El código debe comenzar con "CONV-"')
-        
-        parts = v.split('-')
-        if len(parts) != 3:
-            raise ValueError('Formato debe ser CONV-YYYY-XX')
-        
-        try:
-            year = int(parts[1])
-            seq = int(parts[2])
-            if year < 2020 or year > 2030:
-                raise ValueError('Año debe estar entre 2020 y 2030')
-            if seq < 1 or seq > 99:
-                raise ValueError('Número secuencial debe estar entre 01 y 99')
-        except ValueError:
-            raise ValueError('Formato de código inválido')
-        
-        return v
+        """Validar código - acepta cualquier formato, solo verifica que no esté vacío"""
+        if not v or not v.strip():
+            raise ValueError('El código no puede estar vacío')
+        return v.strip()
     
     @validator('end_date')
     def validate_end_date(cls, v, values):

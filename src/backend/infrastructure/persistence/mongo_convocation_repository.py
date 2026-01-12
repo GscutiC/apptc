@@ -24,11 +24,32 @@ class MongoConvocationRepository(ConvocationRepository):
         self.db = get_database()
         self.collection = self.db.convocations
 
-        # Crear índices únicos si no existen
+        # Crear índice compuesto único (code + created_by)
+        # Esto permite que diferentes usuarios tengan el mismo código
+        # pero un mismo usuario no puede tener códigos duplicados
+        # 
+        # NOTA: Motor (async) maneja la creación de índices de forma diferente
+        # Los índices se crean automáticamente en el primer uso
+        # Para gestionar índices manualmente, usa la shell de MongoDB:
+        # 
+        # db.convocations.dropIndex("code_1")  // Eliminar índice antiguo
+        # db.convocations.createIndex({code: 1, created_by: 1}, {unique: true, name: "code_created_by_unique"})
+        # 
+        # O déjalo comentado y MongoDB creará el índice en el primer insert
+        
+        # Crear índice de forma "lazy" - Motor lo creará cuando sea necesario
+        # No usamos drop_index aquí porque puede causar errores si no existe
         try:
-            self.collection.create_index("code", unique=True)
-        except Exception:
-            pass  # Índice ya existe
+            self.collection.create_index(
+                [("code", 1), ("created_by", 1)], 
+                unique=True,
+                name="code_created_by_unique",
+                background=True  # Crear en background para no bloquear
+            )
+        except Exception as e:
+            # Silenciar errores de índice - puede ser que ya exista
+            logger.debug(f"Índice ya existe o error al crear: {e}")
+            pass
 
     def _entity_to_dict(self, convocation: Convocation) -> Dict[str, Any]:
         """Convierte una entidad Convocation a dict para MongoDB"""
@@ -114,7 +135,7 @@ class MongoConvocationRepository(ConvocationRepository):
 
         except Exception as e:
             if "duplicate key error" in str(e).lower():
-                raise ValueError(f"Ya existe una convocatoria con el código '{convocation.code}'")
+                raise ValueError(f"Ya tienes una convocatoria con el código '{convocation.code}'. Usa un código diferente.")
             raise
 
     async def get_convocation_by_id(self, convocation_id: str) -> Optional[Convocation]:

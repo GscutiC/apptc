@@ -111,10 +111,22 @@ def get_settings(environment: str = "development") -> Settings:
     if environment.lower() == "production":
         return ProductionSettings()
     
-    # Para desarrollo, intentar cargar desde .env
+    # Verificar si hay un archivo .env personalizado en la variable de entorno
+    custom_env = os.getenv("CUSTOM_ENV_FILE")
+    if custom_env and os.path.exists(custom_env):
+        return Settings(_env_file=custom_env)
+    
+    # Para desarrollo, intentar cargar desde .env en el directorio actual
     env_file = os.path.join(os.getcwd(), ".env")
     if os.path.exists(env_file):
         return Settings(_env_file=env_file)
+    
+    # Si no encuentra .env, buscar en el directorio backend
+    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+    backend_env = os.path.join(backend_dir, ".env")
+    if os.path.exists(backend_env):
+        return Settings(_env_file=backend_env)
+    
     return Settings()
 
 
