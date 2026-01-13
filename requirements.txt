@@ -19,3 +19,4 @@ black>=23.0.0
 flake8>=6.0.0
 mypy>=1.0.0
 tzdata>=2025.2
+cloudinary>=1.41.0
