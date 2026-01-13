@@ -23,10 +23,23 @@ venv.bak/
 *.db
 *.sqlite
 
-# Environment variables
+
+# =============================
+# Archivos de variables sensibles y configuración
+# ¡NO VERSIONAR ARCHIVOS .env NI CREDENCIALES!
+# =============================
 .env
+.env.*
+!*.env.example
+.envrc
+.secret
+.secrets
+.token
+.credentials
+.config.env
 .env.local
 .env.production
+# =============================
 
 # Uploads (archivos subidos por usuarios)
 uploads/

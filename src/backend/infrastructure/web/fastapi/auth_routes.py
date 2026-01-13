@@ -159,9 +159,13 @@ async def get_current_user(
                     phone_number=token_data.get("phone_number")
                 )
             
-            created_user = await user_repo.create_user(user_data)
+            # Usar get_or_create para evitar duplicados por condiciones de carrera
+            created_user, was_created = await user_repo.get_or_create_user(user_data)
             user = await user_repo.get_user_with_role(clerk_id)
-            auth_logger.info(f"✅ Usuario creado exitosamente: {clerk_id}")
+            if was_created:
+                auth_logger.info(f"✅ Usuario creado exitosamente: {clerk_id}")
+            else:
+                auth_logger.info(f"ℹ️ Usuario ya existía (creado por webhook): {clerk_id}")
         except Exception as e:
             auth_logger.error(f"❌ Error creando usuario: {str(e)}")
             raise HTTPException(
@@ -368,7 +372,7 @@ async def clerk_webhook(
         data = payload.get("data", {})
         
         if event_type == "user.created":
-            # Crear usuario en nuestra DB
+            # Crear usuario en nuestra DB (usando get_or_create para evitar duplicados)
             user_data = UserCreate(
                 clerk_id=data["id"],
                 email=data.get("email_addresses", [{}])[0].get("email_address", ""),
@@ -378,7 +382,9 @@ async def clerk_webhook(
                 image_url=data.get("image_url"),
                 phone_number=data.get("phone_numbers", [{}])[0].get("phone_number")
             )
-            await user_repo.create_user(user_data)
+            # Usar get_or_create para evitar duplicados por condiciones de carrera
+            user, was_created = await user_repo.get_or_create_user(user_data)
+            auth_logger.info(f"{'✅ Usuario creado' if was_created else 'ℹ️ Usuario ya existía'} via webhook: {data['id']}")
             
         elif event_type == "user.updated":
             # Actualizar usuario en nuestra DB

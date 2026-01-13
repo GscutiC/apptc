@@ -162,7 +162,8 @@ cd backend
 
 # 2. Crear entorno virtual
 python -m venv venv
-venv\Scripts\activate  # Windows
+.\venv\Scripts\Activate
+ # Windows
 # source venv/bin/activate  # Linux/Mac
 
 # 3. Instalar dependencias
