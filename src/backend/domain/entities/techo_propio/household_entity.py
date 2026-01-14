@@ -42,7 +42,9 @@ class HouseholdMember(TechoPropioBaseEntity):
     
     # Información de salud
     disability_type: DisabilityType = DisabilityType.NONE
-    
+    disability_is_permanent: bool = False  # ✅ NUEVO: ¿La discapacidad es permanente?
+    disability_is_severe: bool = False  # ✅ NUEVO: ¿La discapacidad es severa?
+
     # Relación familiar
     relationship: Optional[FamilyRelationship] = None  # ✅ MODIFICADO - Ahora opcional
     
@@ -204,9 +206,11 @@ class HouseholdMember(TechoPropioBaseEntity):
             "document_type": self.document_type.value,
             "document_number": self.document_number,
             "birth_date": self.birth_date.isoformat(),
-            "relationship": self.relationship.value,
+            "relationship": self.relationship.value if self.relationship else None,
             "education_level": self.education_level.value if self.education_level else None,
             "disability_type": self.disability_type.value,
+            "disability_is_permanent": self.disability_is_permanent,  # ✅ NUEVO
+            "disability_is_severe": self.disability_is_severe,  # ✅ NUEVO
             "is_dependent": self.is_dependent,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -223,8 +227,10 @@ class HouseholdMember(TechoPropioBaseEntity):
             document_type=DocumentType(data["document_type"]),
             document_number=data["document_number"],
             birth_date=datetime.fromisoformat(data["birth_date"]).date(),
-            relationship=FamilyRelationship(data["relationship"]),
+            relationship=FamilyRelationship(data["relationship"]) if data.get("relationship") else None,
             education_level=EducationLevel(data["education_level"]) if data.get("education_level") else None,
             disability_type=DisabilityType(data.get("disability_type", DisabilityType.NONE.value)),
+            disability_is_permanent=data.get("disability_is_permanent", False),  # ✅ NUEVO
+            disability_is_severe=data.get("disability_is_severe", False),  # ✅ NUEVO
             is_dependent=data.get("is_dependent", True)
         )

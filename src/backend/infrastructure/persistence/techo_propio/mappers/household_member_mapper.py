@@ -40,6 +40,8 @@ class HouseholdMemberMapper(BaseMapper):
                 "work_condition": cls.safe_enum_to_value(member.work_condition),
                 "monthly_income": cls.safe_decimal_to_float(member.monthly_income),
                 "disability_type": cls.safe_enum_to_value(member.disability_type),
+                "disability_is_permanent": member.disability_is_permanent,  # ✅ NUEVO
+                "disability_is_severe": member.disability_is_severe,  # ✅ NUEVO
                 "relationship": cls.safe_enum_to_value(member.relationship) if member.relationship else None,
                 "is_dependent": member.is_dependent,
                 "created_at": member.created_at,
@@ -67,16 +69,18 @@ class HouseholdMemberMapper(BaseMapper):
                 work_condition=WorkCondition(data["work_condition"]),
                 monthly_income=cls.safe_float_to_decimal(data["monthly_income"]),
                 disability_type=DisabilityType(data.get("disability_type", "NONE")),
+                disability_is_permanent=data.get("disability_is_permanent", False),  # ✅ NUEVO
+                disability_is_severe=data.get("disability_is_severe", False),  # ✅ NUEVO
                 relationship=FamilyRelationship(data["relationship"]) if data.get("relationship") else None,
                 is_dependent=data.get("is_dependent", True)
             )
-            
+
             # Restaurar metadatos
             member.id = data["id"]
             member.created_at = data["created_at"]
             member.updated_at = data.get("updated_at")
-            
+
             return member
-            
+
         except Exception as e:
             cls.handle_mapping_error("HouseholdMember", "from_dict", e)

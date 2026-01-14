@@ -35,6 +35,8 @@ class ApplicantMapper(BaseMapper):
                 "education_level": cls.safe_enum_to_value(applicant.education_level),
                 "occupation": applicant.occupation,
                 "disability_type": cls.safe_enum_to_value(applicant.disability_type) if applicant.disability_type else None,
+                "disability_is_permanent": applicant.disability_is_permanent,  # ✅ NUEVO
+                "disability_is_severe": applicant.disability_is_severe,  # ✅ NUEVO
                 "is_main_applicant": applicant.is_main_applicant,
                 "phone_number": applicant.phone_number,
                 "email": applicant.email,
@@ -60,17 +62,19 @@ class ApplicantMapper(BaseMapper):
                 education_level=EducationLevel(data["education_level"]),
                 occupation=data.get("occupation"),
                 disability_type=DisabilityType(data["disability_type"]) if data.get("disability_type") else None,
+                disability_is_permanent=data.get("disability_is_permanent", False),  # ✅ NUEVO
+                disability_is_severe=data.get("disability_is_severe", False),  # ✅ NUEVO
                 is_main_applicant=data["is_main_applicant"],
                 phone_number=data.get("phone_number"),
                 email=data.get("email")
             )
-            
+
             # Restaurar metadatos
             applicant.id = data["id"]
             applicant.created_at = data["created_at"]
             applicant.updated_at = data.get("updated_at")
-            
+
             return applicant
-            
+
         except Exception as e:
             cls.handle_mapping_error("Applicant", "from_dict", e)

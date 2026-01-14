@@ -33,6 +33,8 @@ class Applicant(TechoPropioBaseEntity):
     # Campos opcionales después
     occupation: Optional[str] = None
     disability_type: DisabilityType = DisabilityType.NONE
+    disability_is_permanent: bool = False  # ✅ NUEVO: ¿La discapacidad es permanente?
+    disability_is_severe: bool = False  # ✅ NUEVO: ¿La discapacidad es severa?
     is_main_applicant: bool = True  # True para jefe de familia, False para cónyuge
     phone_number: Optional[str] = None
     email: Optional[str] = None
@@ -152,6 +154,8 @@ class Applicant(TechoPropioBaseEntity):
             "education_level": self.education_level.value,
             "occupation": self.occupation,
             "disability_type": self.disability_type.value,
+            "disability_is_permanent": self.disability_is_permanent,  # ✅ NUEVO
+            "disability_is_severe": self.disability_is_severe,  # ✅ NUEVO
             "is_main_applicant": self.is_main_applicant,
             "phone_number": self.phone_number,
             "email": self.email,
@@ -177,6 +181,8 @@ class Applicant(TechoPropioBaseEntity):
             education_level=EducationLevel(data["education_level"]),
             occupation=data.get("occupation"),
             disability_type=DisabilityType(data.get("disability_type", DisabilityType.NONE.value)),
+            disability_is_permanent=data.get("disability_is_permanent", False),  # ✅ NUEVO
+            disability_is_severe=data.get("disability_is_severe", False),  # ✅ NUEVO
             is_main_applicant=data.get("is_main_applicant", True),
             phone_number=data.get("phone_number"),
             email=data.get("email"),

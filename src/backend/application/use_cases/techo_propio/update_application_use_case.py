@@ -308,6 +308,8 @@ class UpdateApplicationUseCase:
                     work_condition=member_dto.work_condition,  # ✅ CORREGIDO: Campo obligatorio faltante
                     monthly_income=member_dto.monthly_income,  # ✅ CORREGIDO: Campo obligatorio faltante
                     disability_type=member_dto.disability_type,
+                    disability_is_permanent=member_dto.disability_is_permanent,  # ✅ NUEVO
+                    disability_is_severe=member_dto.disability_is_severe,  # ✅ NUEVO
                     relationship=member_dto.relationship,
                     is_dependent=member_dto.is_dependent
                 )

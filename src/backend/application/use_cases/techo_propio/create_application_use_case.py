@@ -164,6 +164,8 @@ class CreateApplicationUseCase:
             education_level=dto.head_of_family.education_level,
             occupation=dto.head_of_family.occupation,
             disability_type=dto.head_of_family.disability_type,
+            disability_is_permanent=dto.head_of_family.disability_is_permanent,  # ✅ NUEVO
+            disability_is_severe=dto.head_of_family.disability_is_severe,  # ✅ NUEVO
             is_main_applicant=True,
             phone_number=dto.head_of_family.phone_number,
             email=dto.head_of_family.email
@@ -214,6 +216,8 @@ class CreateApplicationUseCase:
                 education_level=dto.spouse.education_level,
                 occupation=dto.spouse.occupation,
                 disability_type=dto.spouse.disability_type,
+                disability_is_permanent=dto.spouse.disability_is_permanent,  # ✅ NUEVO
+                disability_is_severe=dto.spouse.disability_is_severe,  # ✅ NUEVO
                 is_main_applicant=False,
                 phone_number=dto.spouse.phone_number,
                 email=dto.spouse.email
@@ -250,6 +254,8 @@ class CreateApplicationUseCase:
                 work_condition=member_dto.work_condition,  # ✅ FIX: Campo agregado
                 monthly_income=member_dto.monthly_income,  # ✅ FIX: Campo agregado
                 disability_type=member_dto.disability_type,
+                disability_is_permanent=member_dto.disability_is_permanent,  # ✅ NUEVO
+                disability_is_severe=member_dto.disability_is_severe,  # ✅ NUEVO
                 relationship=member_dto.relationship,
                 is_dependent=member_dto.is_dependent
             )
@@ -397,6 +403,8 @@ class CreateApplicationUseCase:
             education_level=application.head_of_family.education_level,
             occupation=application.head_of_family.occupation,
             disability_type=application.head_of_family.disability_type,
+            disability_is_permanent=application.head_of_family.disability_is_permanent,  # ✅ NUEVO
+            disability_is_severe=application.head_of_family.disability_is_severe,  # ✅ NUEVO
             is_main_applicant=application.head_of_family.is_main_applicant,
             phone_number=application.head_of_family.phone_number,
             email=application.head_of_family.email,
@@ -468,6 +476,8 @@ class CreateApplicationUseCase:
                 education_level=application.spouse.education_level,
                 occupation=application.spouse.occupation,
                 disability_type=application.spouse.disability_type,
+                disability_is_permanent=application.spouse.disability_is_permanent,  # ✅ NUEVO
+                disability_is_severe=application.spouse.disability_is_severe,  # ✅ NUEVO
                 is_main_applicant=application.spouse.is_main_applicant,
                 phone_number=application.spouse.phone_number,
                 email=application.spouse.email,
@@ -517,6 +527,8 @@ class CreateApplicationUseCase:
                 relationship=member.relationship,
                 education_level=member.education_level,
                 disability_type=member.disability_type,
+                disability_is_permanent=member.disability_is_permanent,  # ✅ NUEVO
+                disability_is_severe=member.disability_is_severe,  # ✅ NUEVO
                 civil_status=member.civil_status,
                 occupation=member.occupation,
                 employment_situation=member.employment_situation,

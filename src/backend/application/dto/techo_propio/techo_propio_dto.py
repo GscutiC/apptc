@@ -31,6 +31,8 @@ class ApplicantCreateDTO(BaseModel):
     education_level: EducationLevel
     occupation: Optional[str] = Field(None, max_length=200)
     disability_type: DisabilityType = DisabilityType.NONE
+    disability_is_permanent: bool = False  # ✅ NUEVO: ¿La discapacidad es permanente?
+    disability_is_severe: bool = False  # ✅ NUEVO: ¿La discapacidad es severa?
     is_main_applicant: bool = True
     phone_number: Optional[str] = Field(None, min_length=7, max_length=15)
     email: Optional[str] = Field(None, pattern=r'^[\w\.-]+@[\w\.-]+\.\w+$')
@@ -103,6 +105,8 @@ class HouseholdMemberCreateDTO(BaseModel):
     work_condition: WorkCondition  # ✅ NUEVO - Formal/Informal (era employment_condition en frontend)
     monthly_income: Decimal = Field(..., ge=0, le=50000)  # ✅ NUEVO - Ingreso mensual (permite 0)
     disability_type: DisabilityType = DisabilityType.NONE
+    disability_is_permanent: bool = False  # ✅ NUEVO: ¿La discapacidad es permanente?
+    disability_is_severe: bool = False  # ✅ NUEVO: ¿La discapacidad es severa?
     relationship: Optional[FamilyRelationship] = None  # ✅ MODIFICADO - Ahora opcional
     is_dependent: bool = True
 
@@ -363,6 +367,8 @@ class ApplicantResponseDTO(BaseModel):
     education_level: EducationLevel
     occupation: Optional[str]
     disability_type: DisabilityType
+    disability_is_permanent: bool = False  # ✅ NUEVO: ¿La discapacidad es permanente?
+    disability_is_severe: bool = False  # ✅ NUEVO: ¿La discapacidad es severa?
     is_main_applicant: bool
     phone_number: Optional[str]
     email: Optional[str]
@@ -414,6 +420,8 @@ class HouseholdMemberResponseDTO(BaseModel):
     relationship: FamilyRelationship
     education_level: Optional[EducationLevel]
     disability_type: DisabilityType
+    disability_is_permanent: bool = False  # ✅ NUEVO: ¿La discapacidad es permanente?
+    disability_is_severe: bool = False  # ✅ NUEVO: ¿La discapacidad es severa?
     civil_status: CivilStatus
     occupation: Optional[str]
     employment_situation: EmploymentSituation
